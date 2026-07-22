@@ -116,14 +116,16 @@ def admin_contacts():
         <h1>Saved contact submissions</h1>
         <p class='note'>This page reads directly from the SQLite database file stored on the Render instance.</p>
         <p><a href='/'>Back to homepage</a></p>
-        <table>
-          <thead>
-            <tr><th>ID</th><th>Name</th><th>Email</th><th>Message</th><th>Created at</th></tr>
-          </thead>
-          <tbody>
-            {rows_html or '<tr><td colspan="5">No submissions yet.</td></tr>'}
-          </tbody>
-        </table>
+        <div class='table-wrap'>
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Name</th><th>Email</th><th>Message</th><th>Created at</th></tr>
+            </thead>
+            <tbody>
+              {rows_html or '<tr><td colspan="5">No submissions yet.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
       </body>
     </html>
     """
