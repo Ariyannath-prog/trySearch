@@ -82,6 +82,54 @@ def health():
     return jsonify({'status': 'ok'})
 
 
+@app.route('/admin/contacts')
+def admin_contacts():
+    with get_db_connection() as conn:
+        rows = conn.execute(
+            'SELECT id, name, email, message, created_at FROM contacts ORDER BY created_at DESC'
+        ).fetchall()
+        contacts = [dict(row) for row in rows]
+
+    rows_html = ''.join(
+        f"<tr><td>{c['id']}</td><td>{c['name']}</td><td>{c['email']}</td><td>{c['message']}</td><td>{c['created_at']}</td></tr>"
+        for c in contacts
+    )
+    html = f"""
+    <!DOCTYPE html>
+    <html lang='en'>
+      <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+        <title>Contact submissions</title>
+        <style>
+          body {{ font-family: system-ui, sans-serif; background: #0b1220; color: #eef3ff; margin: 0; padding: 2rem; }}
+          table {{ width: 100%; border-collapse: collapse; margin-top: 1rem; }}
+          th, td {{ border: 1px solid rgba(255,255,255,0.12); padding: 0.75rem 1rem; text-align: left; }}
+          th {{ background: rgba(255,255,255,0.07); }}
+          tr:nth-child(even) {{ background: rgba(255,255,255,0.03); }}
+          h1 {{ margin: 0; font-size: 1.75rem; }}
+          .note {{ color: #9cb2d3; margin-top: 0.5rem; }}
+          a {{ color: #4fbafc; text-decoration: none; }}
+        </style>
+      </head>
+      <body>
+        <h1>Saved contact submissions</h1>
+        <p class='note'>This page reads directly from the SQLite database file stored on the Render instance.</p>
+        <p><a href='/'>Back to homepage</a></p>
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Name</th><th>Email</th><th>Message</th><th>Created at</th></tr>
+          </thead>
+          <tbody>
+            {rows_html or '<tr><td colspan="5">No submissions yet.</td></tr>'}
+          </tbody>
+        </table>
+      </body>
+    </html>
+    """
+    return html
+
+
 # Ensure the SQLite database exists before the app starts
 init_db()
 

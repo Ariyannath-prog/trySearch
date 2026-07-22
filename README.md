@@ -40,6 +40,11 @@ To run the full website online with the backend and SQLite database, deploy the 
 
 A `render.yaml` file is included so Render can create the service settings automatically when you connect this repository.
 
+### Viewing saved submissions
+
+- JSON API: `https://<your-render-url>/api/contacts`
+- Browser view: `https://<your-render-url>/admin/contacts`
+
 ### Important
 
 SQLite is suitable for development and small demos, but for production you should use a hosted database service if you need persistence across deploys, scaling, or multiple instances.
