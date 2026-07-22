@@ -1,30 +1,43 @@
-# Searchable Replica
+# Searchable Replica with Backend
 
-A simple static replica of the Searchable homepage built with HTML, CSS, and JavaScript.
+This repository contains a static frontend replica of the Searchable homepage plus a simple Flask backend using SQLite.
 
-## Run locally
+## Local setup
 
-Install dependencies:
+1. Install dependencies:
 
 ```bash
 cd /Users/ariyannath/Desktop/trySearch
 python3 -m pip install -r requirements.txt
 ```
 
-Start the backend server:
+2. Start the app:
 
 ```bash
 python3 server.py
 ```
 
-Then open `http://127.0.0.1:8000` in your browser.
+3. Open `http://127.0.0.1:8000` in your browser.
 
 ## Backend
 
-This replica now includes a simple Flask backend using SQLite. The contact form stores submissions in `searchable.db` and exposes the API endpoint `POST /api/contacts`.
+- `server.py` serves the frontend and provides the API endpoints:
+  - `GET /api/contacts` — fetch saved contact submissions
+  - `POST /api/contacts` — save a contact submission to SQLite
+- `searchable.db` is created automatically when the app first runs.
 
-## Files
+## Deployment
 
-- `index.html` — homepage markup
-- `styles.css` — site styling and responsive layout
-- `script.js` — mobile menu toggle behavior
+GitHub Pages can host only static files and cannot run the Flask backend.
+
+To run the full website online with the backend and SQLite database, deploy the repository to a web host that supports Python server apps, such as Render, Railway, Fly, or Heroku.
+
+### Example hosting options
+
+- Render: create a new web service using this repo and set the build command to `pip install -r requirements.txt`.
+- Railway: connect the repo and use the default Python deployment.
+- Heroku: add `Procfile` and deploy the app.
+
+### Important
+
+SQLite is suitable for development and small demos, but for production you should use a hosted database service if you need persistence across deploys and scaling.

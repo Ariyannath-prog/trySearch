@@ -16,6 +16,7 @@ def get_db_connection():
 
 
 def init_db():
+    os.makedirs(BASE_DIR, exist_ok=True)
     with get_db_connection() as conn:
         conn.execute(
             '''
@@ -38,7 +39,8 @@ def index():
 
 @app.route('/<path:path>')
 def static_files(path):
-    if os.path.exists(os.path.join(BASE_DIR, path)):
+    filepath = os.path.join(BASE_DIR, path)
+    if os.path.exists(filepath) and os.path.isfile(filepath):
         return send_from_directory(BASE_DIR, path)
     abort(404)
 
@@ -75,6 +77,12 @@ def contacts():
     return jsonify({'status': 'success', 'contacts': contacts})
 
 
+@app.route('/api/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok'})
+
+
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=8000)
+    port = int(os.environ.get('PORT', 8000))
+    app.run(host='0.0.0.0', port=port)

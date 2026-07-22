@@ -193,7 +193,8 @@ select {
 .why-choose p,
 .integrations p,
 .footer-grid p,
-.feature-card p {
+.feature-card p,
+.contact-copy p {
   color: #c6d0e4;
   font-size: 1.05rem;
   margin: 1.5rem 0 0;
@@ -397,9 +398,9 @@ select {
 }
 
 .contact-copy {
-  color: #c6d0e4;
   display: flex;
   align-items: center;
+  color: #c6d0e4;
 }
 
 .contact-form {
@@ -496,7 +497,8 @@ select {
 
 @media (max-width: 960px) {
   .hero,
-  .section-highlight {
+  .section-highlight,
+  .contact-panel {
     grid-template-columns: 1fr;
   }
 
