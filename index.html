@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Searchable — AI Search Visibility & Analytics Platform</title>
+    <title>trySearch — AI Search Visibility & Analytics Platform</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -11,7 +11,7 @@
       <div class="container header-inner">
         <a href="/" class="brand">
           <span class="brand-mark">S</span>
-          <span class="brand-name">Searchable</span>
+          <span class="brand-name">trySearch</span>
         </a>
         <nav class="site-nav">
           <a href="#product">Product</a>
@@ -21,7 +21,7 @@
           <a href="#contact">Contact</a>
         </nav>
         <div class="header-actions">
-          <a href="#login" class="text-button">Login</a>
+          <a href="/login" class="text-button" id="auth-link">Login</a>
           <a href="#trial" class="button button-primary">Start for free</a>
         </div>
         <button class="mobile-menu-toggle" aria-label="Toggle menu">
@@ -36,7 +36,7 @@
         <a href="#resources">Resources</a>
         <a href="#pricing">Pricing</a>
         <a href="#contact">Contact</a>
-        <a href="#login">Login</a>
+        <a href="/login">Login</a>
         <a href="#trial" class="button button-primary mobile-cta">Start for free</a>
       </div>
     </header>
@@ -46,7 +46,7 @@
         <div class="hero-content">
           <p class="eyebrow">AI Search Optimization for modern brands</p>
           <h1>Visibility & Analytics from AI search — and the actions to drive growth</h1>
-          <p class="hero-copy">Searchable is an AI search optimization platform that helps brands track visibility and analytics across AI engines like ChatGPT, Claude, and Perplexity—driving growth through actionable insights.</p>
+          <p class="hero-copy">trySearch is an AI search optimization platform that helps brands track visibility and analytics across AI engines like ChatGPT, Claude, and Perplexity—driving growth through actionable insights.</p>
           <div class="hero-actions">
             <a href="#trial" class="button button-primary">Start for free</a>
             <a href="#contact" class="button button-secondary">Book a demo</a>
@@ -61,7 +61,7 @@
           <div class="card visual-card">
             <div class="card-header">
               <div class="indicator"></div>
-              <span>Searchable Agent</span>
+              <span>trySearch Agent</span>
             </div>
             <div class="visual-content">
               <div class="metric">
@@ -113,7 +113,7 @@
         <div class="highlight-copy">
           <p class="eyebrow">See where you appear in AI search results</p>
           <h2>Track your brand mentions and citations across ChatGPT, Claude, Perplexity, Google AI Overviews, and Microsoft Copilot.</h2>
-          <p>Searchable monitors how AI engines respond to queries about your products, services, and industry—showing you exactly where you appear, where competitors outrank you, and which opportunities you're missing.</p>
+          <p>trySearch monitors how AI engines respond to queries about your products, services, and industry—showing you exactly where you appear, where competitors outrank you, and which opportunities you're missing.</p>
           <a href="#contact" class="button button-primary">Request a demo</a>
         </div>
         <div class="highlight-visual">
@@ -134,7 +134,7 @@
 
       <section class="section container why-choose">
         <div class="section-heading">
-          <p class="eyebrow">Why choose Searchable</p>
+          <p class="eyebrow">Why choose trySearch</p>
           <h2>Built for the next generation of AI search optimization.</h2>
         </div>
         <div class="why-grid">
@@ -152,14 +152,14 @@
           </article>
           <article>
             <h3>Trusted by teams</h3>
-            <p>Marketers, agencies, and brands rely on Searchable to improve visibility, capture AI-driven traffic, and grow pipeline.</p>
+            <p>Marketers, agencies, and brands rely on trySearch to improve visibility, capture AI-driven traffic, and grow pipeline.</p>
           </article>
         </div>
       </section>
 
       <section class="section container integrations">
         <p class="eyebrow">Integrations</p>
-        <h2>Connect Searchable with your marketing stack</h2>
+        <h2>Connect trySearch with your marketing stack</h2>
         <p>Link Google Analytics, Search Console, HubSpot, Salesforce, and more so you can correlate AI visibility with real revenue outcomes.</p>
         <div class="integrations-grid">
           <div>Google Analytics</div>
@@ -213,9 +213,9 @@
         <div>
           <a href="/" class="brand-footer">
             <span class="brand-mark">S</span>
-            <span class="brand-name">Searchable</span>
+            <span class="brand-name">trySearch</span>
           </a>
-          <p>Searchable is an AI search optimization platform that helps brands track visibility and analytics across AI engines like ChatGPT and Claude.</p>
+          <p>trySearch is an AI search optimization platform that helps brands track visibility and analytics across AI engines like ChatGPT and Claude.</p>
         </div>
         <div>
           <h3>Product</h3>
@@ -240,11 +240,34 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <span>© 2026 Searchable Limited. All rights reserved.</span>
+        <span>© 2026 trySearch Limited. All rights reserved.</span>
         <span>B1, 9 Tanner St, London SE1 3LE</span>
       </div>
     </footer>
 
     <script src="script.js"></script>
+    <script>
+      // Update header auth link based on session
+      (async function(){
+        try{
+          const res = await fetch('/api/me');
+          const j = await res.json();
+          const authLink = document.getElementById('auth-link');
+          if(!authLink) return;
+          if(j.logged_in){
+            authLink.textContent = `Logout (${j.username})`;
+            authLink.href = '#';
+            authLink.addEventListener('click', async (e)=>{ e.preventDefault(); await fetch('/api/logout',{method:'POST'}); window.location.reload(); });
+            const nav = document.querySelector('.site-nav');
+            if(nav && !document.getElementById('admin-link')){
+              const a = document.createElement('a'); a.href='/admin/contacts'; a.id='admin-link'; a.textContent='Admin'; nav.appendChild(a);
+            }
+          } else {
+            authLink.textContent = 'Login';
+            authLink.href = '/login';
+          }
+        }catch(err){ console.warn('auth check failed', err); }
+      })();
+    </script>
   </body>
 </html>

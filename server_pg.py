@@ -1,50 +1,75 @@
 import os
-import sqlite3
 from datetime import datetime, timedelta
+
 from flask import Flask, jsonify, request, send_from_directory, abort, session, redirect
 from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import (
+    create_engine,
+    MetaData,
+    Table,
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    select,
+    insert,
+    desc,
+)
+from sqlalchemy.exc import IntegrityError
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'searchable.db')
+SQLITE_PATH = os.path.join(BASE_DIR, 'searchable.db')
+
+# Use DATABASE_URL env var for hosted Postgres, otherwise fall back to local sqlite
+DB_URL = os.environ.get('DATABASE_URL') or f'sqlite:///{SQLITE_PATH}'
+
+# Create engine
+engine = create_engine(DB_URL, future=True)
+metadata = MetaData()
+
+# Table definitions (SQLAlchemy Core) - compatible with Postgres and SQLite
+contacts = Table(
+    'contacts',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('name', String(255), nullable=False),
+    Column('email', String(255), nullable=False),
+    Column('message', Text, nullable=False),
+    Column('created_at', DateTime, nullable=False),
+)
+
+users = Table(
+    'users',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('username', String(150), nullable=False, unique=True),
+    Column('email', String(255), nullable=False, unique=True),
+    Column('password_hash', String(255), nullable=False),
+    Column('created_at', DateTime, nullable=False),
+)
+
+# Create tables if they don't exist
+metadata.create_all(engine)
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-me')
 app.permanent_session_lifetime = timedelta(days=30)
 
 
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def to_iso(dt):
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        return dt
+    return dt.isoformat() + 'Z'
 
 
-def init_db():
-    os.makedirs(BASE_DIR, exist_ok=True)
-    with get_db_connection() as conn:
-        conn.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS contacts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                message TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-            '''
-        )
-        # users table for authentication
-        conn.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                email TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-            '''
-        )
-        conn.commit()
+def row_to_dict(row):
+    d = dict(row)
+    if 'created_at' in d and d['created_at'] is not None:
+        d['created_at'] = to_iso(d['created_at'])
+    return d
 
 
 @app.route('/')
@@ -61,7 +86,7 @@ def static_files(path):
 
 
 @app.route('/api/contacts', methods=['GET', 'POST'])
-def contacts():
+def contacts_endpoint():
     if request.method == 'POST':
         data = request.get_json(silent=True)
         if not data:
@@ -74,27 +99,24 @@ def contacts():
         if not name or not email or not message:
             return jsonify({'error': 'Name, email, and message are required.'}), 400
 
-        created_at = datetime.utcnow().isoformat() + 'Z'
-        with get_db_connection() as conn:
+        created_at = datetime.utcnow()
+        with engine.begin() as conn:
             conn.execute(
-                'INSERT INTO contacts (name, email, message, created_at) VALUES (?, ?, ?, ?)',
-                (name, email, message, created_at),
+                insert(contacts).values(name=name, email=email, message=message, created_at=created_at)
             )
-            conn.commit()
-
         return jsonify({'status': 'success', 'message': 'Contact request submitted.'}), 201
 
-    with get_db_connection() as conn:
-        rows = conn.execute(
-            'SELECT id, name, email, message, created_at FROM contacts ORDER BY created_at DESC LIMIT 100'
-        ).fetchall()
-        contacts = [dict(row) for row in rows]
-    return jsonify({'status': 'success', 'contacts': contacts})
+    # GET
+    with engine.connect() as conn:
+        stmt = select(contacts.c.id, contacts.c.name, contacts.c.email, contacts.c.message, contacts.c.created_at).order_by(desc(contacts.c.created_at)).limit(100)
+        result = conn.execute(stmt)
+        rows = [row_to_dict(r) for r in result.mappings().all()]
+    return jsonify({'status': 'success', 'contacts': rows})
 
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok'})
+    return jsonify({'status': 'ok', 'db': DB_URL.split('://')[0]})
 
 
 # Authentication endpoints
@@ -111,15 +133,13 @@ def api_register():
         return jsonify({'error': 'username, email and password required'}), 400
 
     password_hash = generate_password_hash(password)
-    created_at = datetime.utcnow().isoformat() + 'Z'
+    created_at = datetime.utcnow()
     try:
-        with get_db_connection() as conn:
+        with engine.begin() as conn:
             conn.execute(
-                'INSERT INTO users (username, email, password_hash, created_at) VALUES (?, ?, ?, ?)',
-                (username, email, password_hash, created_at),
+                insert(users).values(username=username, email=email, password_hash=password_hash, created_at=created_at)
             )
-            conn.commit()
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         return jsonify({'error': 'User with that username or email already exists.'}), 400
 
     return jsonify({'status': 'success', 'message': 'User registered.'}), 201
@@ -137,8 +157,9 @@ def api_login():
     if not username or not password:
         return jsonify({'error': 'username and password required'}), 400
 
-    with get_db_connection() as conn:
-        row = conn.execute('SELECT id, username, password_hash FROM users WHERE username = ? OR email = ? LIMIT 1', (username, username)).fetchone()
+    with engine.connect() as conn:
+        stmt = select(users.c.id, users.c.username, users.c.password_hash).where((users.c.username == username) | (users.c.email == username)).limit(1)
+        row = conn.execute(stmt).mappings().first()
         if not row:
             return jsonify({'error': 'Invalid credentials'}), 401
         user = dict(row)
@@ -255,15 +276,14 @@ def admin_contacts():
     if not session.get('user_id'):
         return redirect('/login')
 
-    with get_db_connection() as conn:
-        rows = conn.execute(
-            'SELECT id, name, email, message, created_at FROM contacts ORDER BY created_at DESC'
-        ).fetchall()
-        contacts = [dict(row) for row in rows]
+    with engine.connect() as conn:
+        stmt = select(contacts.c.id, contacts.c.name, contacts.c.email, contacts.c.message, contacts.c.created_at).order_by(desc(contacts.c.created_at))
+        result = conn.execute(stmt)
+        rows = [row_to_dict(r) for r in result.mappings().all()]
 
     rows_html = ''.join(
         f"<tr><td>{c['id']}</td><td>{c['name']}</td><td>{c['email']}</td><td>{c['message']}</td><td>{c['created_at']}</td></tr>"
-        for c in contacts
+        for c in rows
     )
     html = f"""
     <!DOCTYPE html>
@@ -285,7 +305,7 @@ def admin_contacts():
       </head>
       <body>
         <h1>Saved contact submissions</h1>
-        <p class='note'>This page reads directly from the SQLite database file stored on the Render instance.</p>
+        <p class='note'>This page reads directly from the database used by the app (Postgres or SQLite depending on configuration).</p>
         <p><a href='/'>Back to homepage</a></p>
         <div class='table-wrap'>
           <table>
@@ -302,9 +322,6 @@ def admin_contacts():
     """
     return html
 
-
-# Ensure the SQLite database exists before the app starts
-init_db()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Contacts Viewer</title>
+  <style>
+    :root{--bg:#f7fafc;--card:#fff;--muted:#6b7280;--brick-ember:#d00000ff;--amber-flame:#ffba08ff;--steel-blue:#3f88c5ff;--deep-space-blue:#032b43ff;--blue-spruce:#136f63ff;--accent:var(--steel-blue)}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial; background:var(--bg);margin:0;color:#111}
+    .wrap{max-width:1100px;margin:32px auto;padding:20px}
+    .card{background:var(--card);border-radius:10px;padding:18px;box-shadow:0 2px 8px rgba(16,24,40,0.05)}
+    h1{margin:0 0 10px;font-size:1.25rem}
+    .meta{color:var(--muted);font-size:0.95rem;margin-bottom:12px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    button{background:var(--accent);color:white;border:none;padding:8px 12px;border-radius:8px;cursor:pointer}
+    button.secondary{background:#e6eefc;color:var(--accent)}
+    .status{font-size:0.95rem;color:var(--muted)}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:10px 8px;border-bottom:1px solid #eef2f7;text-align:left;font-size:0.95rem}
+    th{background:#f8fafc;position:sticky;top:0}
+    .nowrap{white-space:nowrap}
+    .center{text-align:center}
+    .empty{padding:30px;text-align:center;color:var(--muted)}
+    @media (max-width:720px){table,thead,tbody,tr,th,td{display:block}thead{display:none}tr{margin-bottom:12px}td{border:none;padding:8px;background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(16,24,40,0.03)}td:before{content:attr(data-label);font-weight:600;display:block;margin-bottom:6px;color:var(--muted)}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Contacts Viewer</h1>
+      <div class="meta">Displays JSON from <code id="apiUrl">/api/contacts</code>. Use <code>?api=</code> to point to a different endpoint (e.g. <code>?api=https://trysearch-vmol.onrender.com/api/contacts</code>).</div>
+
+      <div class="controls">
+        <button id="refreshBtn">Refresh</button>
+        <button id="downloadCsv" class="secondary">Download CSV</button>
+        <button id="openJson" class="secondary">Open JSON</button>
+        <div style="flex:1"></div>
+        <div class="status" id="status">Idle</div>
+      </div>
+
+      <div id="content">
+        <div class="empty">No data loaded yet. Click Refresh.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const apiFromQuery = params.get('api');
+    const defaultApi = '/api/contacts';
+    const API_URL = apiFromQuery || defaultApi;
+    document.getElementById('apiUrl').textContent = API_URL;
+
+    const statusEl = document.getElementById('status');
+    const content = document.getElementById('content');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const downloadCsvBtn = document.getElementById('downloadCsv');
+    const openJsonBtn = document.getElementById('openJson');
+
+    let lastData = null;
+
+    function setStatus(msg, isError){ statusEl.textContent = msg; statusEl.style.color = isError ? 'crimson' : '' }
+
+    async function fetchData(){
+      setStatus('Loading...');
+      try{
+        const resp = await fetch(API_URL, { credentials: 'include' });
+        if(!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        lastData = data;
+        renderData(data);
+        setStatus('Loaded ' + (Array.isArray(data) ? data.length : (data && data.count) ? data.count : 'items'));
+      }catch(err){
+        console.error(err);
+        setStatus('Failed to load: ' + err.message, true);
+        content.innerHTML = `<div class="empty">Failed to fetch data. ${err.message}.\nIf this is a cross-origin request, the server must allow CORS or open this viewer from the same origin.</div>`;
+      }
+    }
+
+    function renderData(data){
+      const items = Array.isArray(data) ? data : (data && data.data) ? data.data : (data && Array.isArray(data.items) ? data.items : []);
+      if(!items || items.length === 0){ content.innerHTML = '<div class="empty">No contacts found.</div>'; return }
+
+      // compute columns union
+      const cols = new Set();
+      items.forEach(it => Object.keys(it || {}).forEach(k => cols.add(k)));
+      const colArr = Array.from(cols);
+
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const trh = document.createElement('tr');
+      colArr.forEach(c => { const th = document.createElement('th'); th.textContent = c; trh.appendChild(th) });
+      thead.appendChild(trh);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      items.forEach(it => {
+        const tr = document.createElement('tr');
+        colArr.forEach(c => {
+          const td = document.createElement('td');
+          td.setAttribute('data-label', c);
+          let val = it && it[c] !== undefined && it[c] !== null ? it[c] : '';
+          if(typeof val === 'object') val = JSON.stringify(val);
+          td.textContent = String(val);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      content.innerHTML = '';
+      content.appendChild(table);
+    }
+
+    function toCSV(items){
+      if(!items || items.length === 0) return '';
+      const cols = new Set(); items.forEach(it => Object.keys(it||{}).forEach(k=>cols.add(k)));
+      const colArr = Array.from(cols);
+      const escape = v => '"' + String(v).replace(/"/g, '""') + '"';
+      const rows = [colArr.map(escape).join(',')];
+      items.forEach(it => {
+        const row = colArr.map(c => escape(it[c] ?? ''));
+        rows.push(row.join(','));
+      });
+      return rows.join('\n');
+    }
+
+    refreshBtn.addEventListener('click', fetchData);
+    openJsonBtn.addEventListener('click', ()=> window.open(API_URL, '_blank'));
+    downloadCsvBtn.addEventListener('click', ()=>{
+      if(!lastData){ setStatus('No data to download', true); return }
+      const items = Array.isArray(lastData) ? lastData : (lastData.data || lastData.items || []);
+      const csv = toCSV(items);
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'contacts.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+
+    // auto-load on open
+    fetchData();
+  </script>
+</body>
+</html>

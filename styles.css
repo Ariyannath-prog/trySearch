@@ -1,10 +1,17 @@
 :root {
-  color-scheme: dark;
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #06080d;
-  color: #e7edf6;
-  line-height: 1.7;
-  font-size: 16px;
+ /* color palette */
+ --brick-ember: #d00000ff;
+ --amber-flame: #ffba08ff;
+ --steel-blue: #3f88c5ff;
+ --deep-space-blue: #032b43ff;
+ --blue-spruce: #136f63ff;
+
+ color-scheme: dark;
+ font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+ background: #06080d;
+ color: #e7edf6;
+ line-height: 1.7;
+ font-size: 16px;
 }
 
 * {
@@ -76,7 +83,7 @@ select {
   align-items: center;
   justify-content: center;
   border-radius: 0.75rem;
-  background: linear-gradient(135deg, #4fbafc, #8d6ef2);
+  background: linear-gradient(135deg, var(--steel-blue), var(--blue-spruce));
   color: white;
   font-weight: 700;
 }
@@ -122,7 +129,7 @@ select {
 }
 
 .button-primary {
-  background: #4fbafc;
+  background: var(--amber-flame);
   color: #06080d;
 }
 
@@ -178,7 +185,7 @@ select {
   font-size: 0.94rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #8fb4f6;
+  color: var(--steel-blue);
   margin-bottom: 1rem;
 }
 
@@ -245,7 +252,7 @@ select {
   width: 0.8rem;
   height: 0.8rem;
   border-radius: 50%;
-  background: linear-gradient(135deg, #4fbafc, #8d6ef2);
+  background: linear-gradient(135deg, var(--amber-flame), var(--brick-ember));
 }
 
 .visual-content {
@@ -273,8 +280,8 @@ select {
 .chart {
   min-height: 10rem;
   border-radius: 1.5rem;
-  background: linear-gradient(180deg, rgba(79, 186, 252, 0.18), transparent 65%),
-    linear-gradient(90deg, rgba(79, 186, 252, 0.35), rgba(141, 110, 242, 0.35));
+  background: linear-gradient(180deg, rgba(63, 136, 197, 0.18), transparent 65%),
+    linear-gradient(90deg, rgba(19, 111, 99, 0.35), rgba(63, 136, 197, 0.35));
 }
 
 .detail-row {
@@ -430,8 +437,8 @@ select {
 
 .form-row input:focus,
 .form-row textarea:focus {
-  border-color: rgba(79, 186, 252, 0.8);
-  box-shadow: 0 0 0 4px rgba(79, 186, 252, 0.12);
+  border-color: rgba(63, 136, 197, 0.9);
+  box-shadow: 0 0 0 4px rgba(63, 136, 197, 0.12);
 }
 
 .form-actions {
