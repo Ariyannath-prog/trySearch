@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: searchable-replica
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app
+    envVars:
+      - key: PORT
+        value: 8000

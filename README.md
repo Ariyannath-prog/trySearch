@@ -34,10 +34,12 @@ To run the full website online with the backend and SQLite database, deploy the 
 
 ### Example hosting options
 
-- Render: create a new web service using this repo and set the build command to `pip install -r requirements.txt`.
+- Render: create a new web service using this repo and set the build command to `pip install -r requirements.txt` and start command to `gunicorn server:app`.
 - Railway: connect the repo and use the default Python deployment.
 - Heroku: add `Procfile` and deploy the app.
 
+A `render.yaml` file is included so Render can create the service settings automatically when you connect this repository.
+
 ### Important
 
-SQLite is suitable for development and small demos, but for production you should use a hosted database service if you need persistence across deploys and scaling.
+SQLite is suitable for development and small demos, but for production you should use a hosted database service if you need persistence across deploys, scaling, or multiple instances.
