@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function closeMobileNav() {
     if (!mobileNav || !toggleButton) return;
     mobileNav.setAttribute('aria-hidden', 'true');
+    toggleButton.setAttribute('aria-expanded', 'false');
     toggleButton.classList.remove('open');
     document.body.style.overflow = '';
   }
@@ -14,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function openMobileNav() {
     if (!mobileNav || !toggleButton) return;
     mobileNav.setAttribute('aria-hidden', 'false');
+    toggleButton.setAttribute('aria-expanded', 'true');
     toggleButton.classList.add('open');
     // prevent background scroll on small screens when menu open
     document.body.style.overflow = 'hidden';

@@ -191,7 +191,7 @@ def login_page():
         <meta charset='utf-8'>
         <meta name='viewport' content='width=device-width,initial-scale=1'>
         <title>Login</title>
-        <style>body{font-family:system-ui, sans-serif;padding:2rem;background:#0b1220;color:#eef3ff}label{display:block;margin:0.5rem 0}input{padding:0.6rem;width:100%;max-width:320px;border-radius:8px;border:1px solid #333;background:#071018;color:#eef3ff}button{margin-top:1rem;padding:0.6rem 1rem;border-radius:8px;background:#ffba08;border:none;color:#061018;font-weight:700}a{color:#3f88c5}</style>
+        <style>*{box-sizing:border-box}body{font-family:system-ui,sans-serif;min-height:100vh;margin:0;padding:clamp(1rem,5vw,2rem);display:grid;align-content:center;background:#0b1220;color:#eef3ff}form{width:min(100%,26rem)}label{display:grid;gap:.4rem;margin:.8rem 0}input{padding:.7rem;width:100%;border-radius:8px;border:1px solid #333;background:#071018;color:#eef3ff;font-size:16px}button{margin-top:1rem;padding:.75rem 1rem;border-radius:8px;background:#ffba08;border:none;color:#061018;font-weight:700;cursor:pointer}a{color:#6eaff0}@media(max-width:400px){button{width:100%}}</style>
       </head>
       <body>
         <h1>Login</h1>
@@ -233,7 +233,7 @@ def register_page():
         <meta charset='utf-8'>
         <meta name='viewport' content='width=device-width,initial-scale=1'>
         <title>Register</title>
-        <style>body{font-family:system-ui, sans-serif;padding:2rem;background:#0b1220;color:#eef3ff}label{display:block;margin:0.5rem 0}input{padding:0.6rem;width:100%;max-width:320px;border-radius:8px;border:1px solid #333;background:#071018;color:#eef3ff}button{margin-top:1rem;padding:0.6rem 1rem;border-radius:8px;background:#ffba08;border:none;color:#061018;font-weight:700}a{color:#3f88c5}</style>
+        <style>*{box-sizing:border-box}body{font-family:system-ui,sans-serif;min-height:100vh;margin:0;padding:clamp(1rem,5vw,2rem);display:grid;align-content:center;background:#0b1220;color:#eef3ff}form{width:min(100%,26rem)}label{display:grid;gap:.4rem;margin:.8rem 0}input{padding:.7rem;width:100%;border-radius:8px;border:1px solid #333;background:#071018;color:#eef3ff;font-size:16px}button{margin-top:1rem;padding:.75rem 1rem;border-radius:8px;background:#ffba08;border:none;color:#061018;font-weight:700;cursor:pointer}a{color:#6eaff0}@media(max-width:400px){button{width:100%}}</style>
       </head>
       <body>
         <h1>Create an account</h1>
@@ -286,8 +286,10 @@ def admin_contacts():
         <meta name='viewport' content='width=device-width, initial-scale=1'>
         <title>Contact submissions</title>
         <style>
-          body {{ font-family: system-ui, sans-serif; background: #0b1220; color: #eef3ff; margin: 0; padding: 2rem; }}
-          table {{ width: 100%; border-collapse: collapse; margin-top: 1rem; }}
+          * {{ box-sizing: border-box; }}
+          body {{ font-family: system-ui, sans-serif; background: #0b1220; color: #eef3ff; margin: 0; padding: clamp(1rem, 4vw, 2rem); }}
+          .table-wrap {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+          table {{ width: 100%; min-width: 720px; border-collapse: collapse; margin-top: 1rem; }}
           th, td {{ border: 1px solid rgba(255,255,255,0.12); padding: 0.75rem 1rem; text-align: left; }}
           th {{ background: rgba(255,255,255,0.07); }}
           tr:nth-child(even) {{ background: rgba(255,255,255,0.03); }}
