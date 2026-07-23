@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, request, send_from_directory, abort, session, redirect
@@ -72,8 +73,52 @@ users = Table(
     Column('created_at', DateTime, nullable=False),
 )
 
+# This value is stored in the database itself. It makes it possible to pin a
+# deployment to one specific database instance and fail safely if a deployment
+# is accidentally configured with a different, empty DATABASE_URL.
+app_metadata = Table(
+    'app_metadata',
+    metadata,
+    Column('key', String(100), primary_key=True),
+    Column('value', String(255), nullable=False),
+)
+
 # Create tables if they don't exist
 metadata.create_all(engine)
+
+
+def get_database_identity():
+    """Return the database's permanent application identity, creating it once."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(app_metadata.c.value).where(app_metadata.c.key == 'database_identity')
+        ).scalar_one_or_none()
+    if row:
+        return row
+
+    database_identity = str(uuid.uuid4())
+    try:
+        with engine.begin() as conn:
+            conn.execute(insert(app_metadata).values(
+                key='database_identity', value=database_identity
+            ))
+        return database_identity
+    except IntegrityError:
+        # Another gunicorn worker initialized the row at the same time. Query
+        # in a new transaction because PostgreSQL marks the failed one aborted.
+        with engine.connect() as conn:
+            return conn.execute(
+                select(app_metadata.c.value).where(app_metadata.c.key == 'database_identity')
+            ).scalar_one()
+
+
+DATABASE_IDENTITY = get_database_identity()
+EXPECTED_DATABASE_IDENTITY = os.environ.get('DATABASE_INSTANCE_ID')
+if EXPECTED_DATABASE_IDENTITY and EXPECTED_DATABASE_IDENTITY != DATABASE_IDENTITY:
+    raise RuntimeError(
+        'DATABASE_INSTANCE_ID does not match the connected database. Refusing to start '
+        'against an unexpected database.'
+    )
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 secret_key = os.environ.get('SECRET_KEY')
@@ -152,7 +197,11 @@ def health():
             conn.execute(text('SELECT 1'))
     except SQLAlchemyError:
         return jsonify({'status': 'error', 'db': engine.url.get_backend_name()}), 503
-    return jsonify({'status': 'ok', 'db': engine.url.get_backend_name()})
+    return jsonify({
+        'status': 'ok',
+        'db': engine.url.get_backend_name(),
+        'database_identity': DATABASE_IDENTITY,
+    })
 
 
 # Authentication endpoints

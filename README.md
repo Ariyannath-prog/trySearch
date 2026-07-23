@@ -31,7 +31,7 @@ For production, set all of these environment variables:
 | `SECRET_KEY` | Long, random Flask session-signing secret |
 | `APP_ENV` | Set to `production` |
 
-`server_pg.py` refuses to start in production if `DATABASE_URL` or `SECRET_KEY` is missing. The included Render blueprint sets these automatically without storing database credentials in the repository.
+`server_pg.py` refuses to start in production if `DATABASE_URL` or `SECRET_KEY` is missing. Configure `DATABASE_URL` once in the Render service dashboard by linking it to your existing PostgreSQL database; do not put the connection string in Git.
 
 ### API Endpoints
 
@@ -46,12 +46,12 @@ For production, set all of these environment variables:
 
 ## Production deployment with Render PostgreSQL
 
-For a new deployment, connect this repository to Render as a Blueprint. The provided `render.yaml` creates a managed PostgreSQL database, injects its connection string as `DATABASE_URL`, generates `SECRET_KEY`, and runs `server_pg:app`.
+The supplied `render.yaml` configures the web service but deliberately does **not** create or replace a database. This prevents a code push from redirecting the app to a newly created, empty database.
 
 For an existing live SQLite deployment, migrate before you switch the web service:
 
 1. Back up `searchable.db`.
-2. In Render, create a PostgreSQL database named `trysearch-postgres` in the same region as the web service.
+2. In Render, create one PostgreSQL database in the same region as the web service.
 3. Temporarily allow your development machine to connect, then copy the database's **external** connection URL.
 4. From this project directory, run:
 
@@ -59,11 +59,13 @@ For an existing live SQLite deployment, migrate before you switch the web servic
 DATABASE_URL="postgresql://..." python3 migrate_sqlite_to_postgres.py --sqlite-file searchable.db
 ```
 
-5. Confirm the migration completed, then deploy this repository with the updated `render.yaml`.
-6. Check `https://your-service.onrender.com/api/health`; it should return `{"status":"ok","db":"postgresql"}`.
-7. Remove the temporary external IP allow-list entry so the deployed app uses only Render's private network.
+5. In the Render web-service dashboard, open **Environment** and set `DATABASE_URL` by linking it to that same PostgreSQL database's **internal connection string**. Do not paste a new temporary database URL on each deploy.
+6. Confirm the migration completed, then deploy this repository with the updated `render.yaml`.
+7. Check `https://your-service.onrender.com/api/health`. Copy the returned `database_identity` value and save it as a new service environment variable named `DATABASE_INSTANCE_ID`.
+8. Deploy once more. Future deployments will refuse to start if `DATABASE_URL` ever points at a different database.
+9. Remove the temporary external IP allow-list entry so the deployed app uses only Render's private network.
 
-Do not commit `DATABASE_URL` or `SECRET_KEY` to Git. Render's `fromDatabase` reference and generated secret handle those values at deploy time.
+Do not commit `DATABASE_URL`, `DATABASE_INSTANCE_ID`, or `SECRET_KEY` to Git. Keep them in Render environment variables. `DATABASE_INSTANCE_ID` is not secret; it is a safety lock that identifies the one database this service is allowed to use.
 
 ## Authentication
 
@@ -87,6 +89,8 @@ The site includes username/email and password authentication backed by the datab
 **Database connection error**: Verify `DATABASE_URL` points to PostgreSQL and, on Render, that the app and database are in the same region.
 
 **Data not persisting**: Make sure the deployed start command is `gunicorn server_pg:app`, not `server.py`.
+
+**Data appears empty after a deployment**: Compare the `database_identity` returned by `/api/health` before and after the deployment. If it changes, the service is connected to a different database; restore the original `DATABASE_URL` in Render and set `DATABASE_INSTANCE_ID` to the identity from the correct database.
 
 **Migration cannot connect**: Temporarily add your current IP address to the database external access allow list, migrate, then remove it again.
 
