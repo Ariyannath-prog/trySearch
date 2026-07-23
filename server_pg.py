@@ -15,17 +15,40 @@ from sqlalchemy import (
     select,
     insert,
     desc,
+    text,
 )
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 SQLITE_PATH = os.path.join(BASE_DIR, 'searchable.db')
 
-# Use DATABASE_URL env var for hosted Postgres, otherwise fall back to local sqlite
-DB_URL = os.environ.get('DATABASE_URL') or f'sqlite:///{SQLITE_PATH}'
+APP_ENV = os.environ.get('APP_ENV', 'development').lower()
+IS_PRODUCTION = APP_ENV == 'production'
 
-# Create engine
-engine = create_engine(DB_URL, future=True)
+
+def normalize_database_url(database_url):
+    """Use SQLAlchemy's psycopg 3 dialect with common Postgres URL formats."""
+    if database_url.startswith('postgres://'):
+        return database_url.replace('postgres://', 'postgresql+psycopg://', 1)
+    if database_url.startswith('postgresql://'):
+        return database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
+    return database_url
+
+
+database_url = os.environ.get('DATABASE_URL')
+if not database_url:
+    if IS_PRODUCTION:
+        raise RuntimeError('DATABASE_URL must be set when APP_ENV=production.')
+    database_url = f'sqlite:///{SQLITE_PATH}'
+
+DB_URL = normalize_database_url(database_url)
+
+# Keep a small, resilient connection pool for managed Postgres. SQLite remains
+# the zero-config local-development fallback.
+engine_options = {'future': True, 'pool_pre_ping': True}
+if DB_URL.startswith('postgresql'):
+    engine_options.update({'pool_size': 5, 'max_overflow': 10, 'pool_recycle': 1800})
+engine = create_engine(DB_URL, **engine_options)
 metadata = MetaData()
 
 # Table definitions (SQLAlchemy Core) - compatible with Postgres and SQLite
@@ -53,8 +76,16 @@ users = Table(
 metadata.create_all(engine)
 
 app = Flask(__name__, static_folder='.', static_url_path='')
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-me')
+secret_key = os.environ.get('SECRET_KEY')
+if IS_PRODUCTION and not secret_key:
+    raise RuntimeError('SECRET_KEY must be set when APP_ENV=production.')
+app.secret_key = secret_key or 'dev-secret-key-change-me'
 app.permanent_session_lifetime = timedelta(days=30)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=IS_PRODUCTION,
+)
 
 
 def to_iso(dt):
@@ -116,7 +147,12 @@ def contacts_endpoint():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'db': DB_URL.split('://')[0]})
+    try:
+        with engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+    except SQLAlchemyError:
+        return jsonify({'status': 'error', 'db': engine.url.get_backend_name()}), 503
+    return jsonify({'status': 'ok', 'db': engine.url.get_backend_name()})
 
 
 # Authentication endpoints

@@ -11,21 +11,27 @@ cd /Users/ariyannath/Desktop/trySearch
 python3 -m pip install -r requirements.txt
 ```
 
-2. Start the app (SQLite for local development):
+2. Start the app (SQLite is used only for local development when `DATABASE_URL` is not set):
 
 ```bash
-python3 server.py
+python3 server_pg.py
 ```
 
 3. Open `http://127.0.0.1:8000` in your browser.
 
-## Backend Options
+## Database configuration
 
-The app supports three database backends:
+The production backend is **PostgreSQL**, using `server_pg.py`. It keeps all data in a managed database and uses a resilient connection pool. SQLite remains a zero-configuration fallback for local development only.
 
-- **server.py** — uses local SQLite (best for local dev)
-- **server_pg.py** — uses Postgres (good for production with DATABASE_URL)
-- **server_mongo.py** — uses MongoDB Atlas (requires MONGODB_URI) ← **recommended for scalability**
+For production, set all of these environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Managed PostgreSQL connection string |
+| `SECRET_KEY` | Long, random Flask session-signing secret |
+| `APP_ENV` | Set to `production` |
+
+`server_pg.py` refuses to start in production if `DATABASE_URL` or `SECRET_KEY` is missing. The included Render blueprint sets these automatically without storing database credentials in the repository.
 
 ### API Endpoints
 
@@ -38,74 +44,26 @@ The app supports three database backends:
 - `GET /api/me` — get current login status
 - `GET /admin/contacts` — view all contacts (requires login)
 
-## Deployment with MongoDB (Recommended)
+## Production deployment with Render PostgreSQL
 
-### Step 1: Create MongoDB Atlas Cluster
+For a new deployment, connect this repository to Render as a Blueprint. The provided `render.yaml` creates a managed PostgreSQL database, injects its connection string as `DATABASE_URL`, generates `SECRET_KEY`, and runs `server_pg:app`.
 
-1. Go to https://www.mongodb.com/cloud/atlas
-2. Sign up (free tier available)
-3. Create a new project
-4. Click **Build a Cluster** → choose **Free tier (M0)**
-5. Select your region
-6. Click **Create Cluster**
-7. Once created, click **Connect** → **Drivers** → copy the connection string
-   - The string looks like: `mongodb+srv://user:password@cluster.mongodb.net/dbname?retryWrites=true&w=majority`
+For an existing live SQLite deployment, migrate before you switch the web service:
 
-### Step 2: Set MongoDB User & Network Access
-
-1. In MongoDB Atlas, go to **Database Access** → **Add New Database User**
-   - Choose **Password** authentication
-   - Save the username and password
-   - Make sure to copy the connection string format with your credentials
-
-2. Go to **Network Access** → **Add IP Address**
-   - Choose **Allow Access from Anywhere** (0.0.0.0/0) for development
-   - Or add your specific IP for better security
-
-### Step 3: Deploy to Render
-
-1. Push this repository to GitHub (if not already pushed)
-2. Go to https://render.com
-3. Create a new web service and connect your GitHub repo
-4. Set the following environment variables in **Environment**:
-
-   | Variable | Value |
-   |----------|-------|
-   | MONGODB_HOST | Host from Atlas Connect (e.g. `trysearch.xxxxx.mongodb.net`) |
-   | MONGODB_USER | Database user (e.g. `nathariyan97_db_user`) |
-   | MONGODB_PASSWORD | That user's password |
-   | MONGODB_DB_NAME | `trysearch` (optional; default is `trysearch`) |
-   | SECRET_KEY | A strong random string (e.g., from https://randomkeygen.com/) |
-
-   **Alternative:** set a single `MONGODB_URI` instead of the four `MONGODB_*` variables above. The app normalizes common typos (wrong username spelling, broken hostname with an extra `@`).
-
-   Example URI: `mongodb+srv://user:password@trysearch.xxxxx.mongodb.net/trysearch?retryWrites=true&w=majority`
-
-5. Make sure **Procfile** exists (it should run `gunicorn server_mongo:app`)
-6. Click **Deploy**
-
-### Step 4: Verify
-
-After deployment:
-
-1. Open your site: `https://your-service.onrender.com`
-2. Check health: `https://your-service.onrender.com/api/health`
-   - Should show: `{"status":"ok","db":"mongodb"}`
-3. Submit a contact form
-4. Check `/api/contacts` to see your data saved
-5. Redeploy again — your data should persist ✓
-
-### Step 5: Migrate from Postgres (optional)
-
-If you have existing data in Postgres and want to copy it to MongoDB:
+1. Back up `searchable.db`.
+2. In Render, create a PostgreSQL database named `trysearch-postgres` in the same region as the web service.
+3. Temporarily allow your development machine to connect, then copy the database's **external** connection URL.
+4. From this project directory, run:
 
 ```bash
-export MONGODB_URI="mongodb+srv://user:password@cluster.mongodb.net/trysearch?retryWrites=true&w=majority"
-export DATABASE_URL="postgresql://user:pass@host:5432/dbname"
-python3 migrate_postgres_to_mongo.py
+DATABASE_URL="postgresql://..." python3 migrate_sqlite_to_postgres.py --sqlite-file searchable.db
 ```
 
-Then redeploy your app on Render with MONGODB_URI set.
+5. Confirm the migration completed, then deploy this repository with the updated `render.yaml`.
+6. Check `https://your-service.onrender.com/api/health`; it should return `{"status":"ok","db":"postgresql"}`.
+7. Remove the temporary external IP allow-list entry so the deployed app uses only Render's private network.
+
+Do not commit `DATABASE_URL` or `SECRET_KEY` to Git. Render's `fromDatabase` reference and generated secret handle those values at deploy time.
 
 ## Authentication
 
@@ -118,33 +76,20 @@ The site includes username/email and password authentication backed by the datab
 
 ## Files
 
-- `server.py` — Flask app with local SQLite
-- `server_pg.py` — Flask app with Postgres (requires DATABASE_URL)
-- `server_mongo.py` — Flask app with MongoDB (requires MONGODB_URI) ← **Use this for Render + MongoDB**
-- `migrate_sqlite_to_postgres.py` — Migration script from SQLite → Postgres
-- `migrate_postgres_to_mongo.py` — Migration script from Postgres → MongoDB
-- `Procfile` — Tells Render which server to run
+- `server.py` — SQLite-only local development server
+- `server_pg.py` — PostgreSQL production server, with a SQLite local fallback
+- `migrate_sqlite_to_postgres.py` — one-time migration script from SQLite → PostgreSQL
+- `Procfile` and `render.yaml` — start the PostgreSQL production server
 - `requirements.txt` — Python dependencies (Flask, gunicorn, pymongo, SQLAlchemy, psycopg)
-
-## Why MongoDB?
-
-- **Scalability**: Easy to scale horizontally
-- **Flexibility**: Schema-less documents (no migrations needed)
-- **Reliability**: MongoDB Atlas is fully managed and backed up
-- **Free tier**: Generous free tier on MongoDB Atlas
-- **Easy integration**: Works seamlessly with the current Flask app
 
 ## Troubleshooting
 
-**MongoDB connection error**: Ensure MONGODB_URI is set correctly and your IP is whitelisted in MongoDB Atlas Network Access.
+**Database connection error**: Verify `DATABASE_URL` points to PostgreSQL and, on Render, that the app and database are in the same region.
 
-**Data not persisting**: Make sure you're running `server_mongo.py` (check Procfile) and MONGODB_URI is set as an environment variable.
+**Data not persisting**: Make sure the deployed start command is `gunicorn server_pg:app`, not `server.py`.
 
-**Duplicate key error on register**: Clear the users collection in MongoDB and try again (or use a different username).
+**Migration cannot connect**: Temporarily add your current IP address to the database external access allow list, migrate, then remove it again.
 
 ## Support
 
-For issues or questions, check:
-- MongoDB Atlas docs: https://docs.atlas.mongodb.com/
-- Render docs: https://render.com/docs
-- Flask docs: https://flask.palletsprojects.com/
+For issues or questions, check the Render and Flask documentation.

@@ -1,10 +1,25 @@
 services:
   - type: web
     name: searchable-replica
-    env: python
+    runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn server_mongo:app
+    startCommand: gunicorn --workers 2 --threads 4 --bind 0.0.0.0:$PORT server_pg:app
+    healthCheckPath: /api/health
     envVars:
       - key: PORT
         value: 8000
+      - key: APP_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: trysearch-postgres
+          property: connectionString
+
+databases:
+  - name: trysearch-postgres
+    databaseName: trysearch
+    user: trysearch
+    plan: basic-1gb

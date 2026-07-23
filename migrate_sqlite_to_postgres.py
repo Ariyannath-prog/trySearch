@@ -1,134 +1,134 @@
-"""
-Simple migration helper: copy users and contacts from a local SQLite searchable.db into a target database
-specified by the DATABASE_URL environment variable (Postgres). Uses SQLAlchemy Core (no ORM) so it works
-with the same table definitions used by the app.
+"""Copy the current SQLite users and contacts tables into PostgreSQL.
 
 Usage:
-  DATABASE_URL="postgresql://user:pw@host:5432/dbname" python3 migrate_sqlite_to_postgres.py --sqlite-file searchable.db
+  DATABASE_URL="postgresql://user:password@host:5432/database" \
+    python3 migrate_sqlite_to_postgres.py --sqlite-file searchable.db
 
-If DATABASE_URL is not set the script will exit.
-
-This script is intended for one-time migrations for small demo datasets. Back up your databases before running.
+Run this once after backing up the SQLite file and before switching the deployed
+application to PostgreSQL. Existing user IDs are intentionally not copied: this
+application has no foreign keys that depend on them, and PostgreSQL allocates
+correct IDs for future registrations.
 """
 
-import os
 import argparse
+import os
 import sys
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text, DateTime, Boolean, select
-from sqlalchemy import insert
-from sqlalchemy.exc import SQLAlchemyError
-import datetime
+from datetime import datetime
+
+from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, Text, create_engine, inspect, insert, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 
-def get_tables(metadata):
+def normalize_database_url(database_url):
+    if database_url.startswith('postgres://'):
+        return database_url.replace('postgres://', 'postgresql+psycopg://', 1)
+    if database_url.startswith('postgresql://'):
+        return database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
+    return database_url
+
+
+def destination_tables(metadata):
     contacts = Table(
-        "contacts",
-        metadata,
-        Column("id", Integer, primary_key=True),
-        Column("name", String(256)),
-        Column("email", String(256)),
-        Column("message", Text),
-        Column("created_at", DateTime),
+        'contacts', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('name', String(255), nullable=False),
+        Column('email', String(255), nullable=False),
+        Column('message', Text, nullable=False),
+        Column('created_at', DateTime, nullable=False),
     )
-
     users = Table(
-        "users",
-        metadata,
-        Column("id", Integer, primary_key=True),
-        Column("username", String(80), unique=True, nullable=False),
-        Column("password", String(256), nullable=False),
-        Column("created_at", DateTime),
+        'users', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('username', String(150), nullable=False, unique=True),
+        Column('email', String(255), nullable=False, unique=True),
+        Column('password_hash', String(255), nullable=False),
+        Column('created_at', DateTime, nullable=False),
     )
-
     return contacts, users
 
 
-def migrate(sqlite_url, target_url):
-    print("Connecting to source (sqlite):", sqlite_url)
-    src_engine = create_engine(sqlite_url)
-    print("Connecting to target (DATABASE_URL):", target_url)
-    dst_engine = create_engine(target_url)
-
-    src_meta = MetaData()
-    dst_meta = MetaData()
-
-    # define table structures used by app
-    src_contacts, src_users = get_tables(src_meta)
-    dst_contacts, dst_users = get_tables(dst_meta)
-
-    try:
-        # reflect existing data from sqlite by reflecting tables if they exist
-        src_meta.reflect(bind=src_engine)
-    except Exception:
-        # ignore, we'll still try to select if tables exist
-        pass
-
-    # ensure destination tables exist
-    dst_meta.create_all(bind=dst_engine)
-
-    with src_engine.connect() as src_conn, dst_engine.connect() as dst_conn:
-        trans = dst_conn.begin()
+def normalize_datetime(value):
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=None)
+    if isinstance(value, str):
         try:
-            # migrate contacts if table exists in source
-            if src_engine.dialect.has_table(src_engine.connect(), 'contacts'):
-                print('Reading contacts from sqlite...')
-                res = src_conn.execute(select(src_contacts))
-                rows = res.fetchall()
-                print(f'Found {len(rows)} contact rows')
-                if rows:
-                    for r in rows:
-                        data = dict(r)
-                        # Some sqlite rows may have created_at as text; normalize
-                        if isinstance(data.get('created_at'), str):
-                            try:
-                                data['created_at'] = datetime.datetime.fromisoformat(data['created_at'])
-                            except Exception:
-                                data['created_at'] = datetime.datetime.utcnow()
-                        dst_conn.execute(insert(dst_contacts).values(**data))
+            return datetime.fromisoformat(value.replace('Z', '+00:00')).replace(tzinfo=None)
+        except ValueError:
+            pass
+    return datetime.utcnow()
 
-            else:
-                print('No contacts table found in sqlite (skipping)')
 
-            # migrate users if table exists in source
-            if src_engine.dialect.has_table(src_engine.connect(), 'users'):
-                print('Reading users from sqlite...')
-                res = src_conn.execute(select(src_users))
-                rows = res.fetchall()
-                print(f'Found {len(rows)} user rows')
-                if rows:
-                    for r in rows:
-                        data = dict(r)
-                        if isinstance(data.get('created_at'), str):
-                            try:
-                                data['created_at'] = datetime.datetime.fromisoformat(data['created_at'])
-                            except Exception:
-                                data['created_at'] = datetime.datetime.utcnow()
-                        dst_conn.execute(insert(dst_users).values(**data))
-            else:
-                print('No users table found in sqlite (skipping)')
+def migrate(sqlite_url, target_url):
+    source_engine = create_engine(sqlite_url, future=True)
+    target_engine = create_engine(normalize_database_url(target_url), future=True, pool_pre_ping=True)
+    source_metadata = MetaData()
+    target_metadata = MetaData()
+    destination_contacts, destination_users = destination_tables(target_metadata)
+    target_metadata.create_all(target_engine)
 
-            trans.commit()
-            print('Migration finished successfully')
-        except SQLAlchemyError as e:
-            trans.rollback()
-            print('Migration failed, rolled back. Error:', e)
-            raise
+    source_inspector = inspect(source_engine)
+    required_tables = {'contacts', 'users'}
+    missing_tables = required_tables - set(source_inspector.get_table_names())
+    if missing_tables:
+        raise RuntimeError(f'Source SQLite database is missing table(s): {", ".join(sorted(missing_tables))}')
+
+    source_contacts = Table('contacts', source_metadata, autoload_with=source_engine)
+    source_users = Table('users', source_metadata, autoload_with=source_engine)
+    required_user_columns = {'username', 'email', 'password_hash', 'created_at'}
+    missing_columns = required_user_columns - set(source_users.c.keys())
+    if missing_columns:
+        raise RuntimeError(
+            'Source users table does not match the current application schema; missing: '
+            + ', '.join(sorted(missing_columns))
+        )
+
+    with source_engine.connect() as source_conn, target_engine.begin() as target_conn:
+        existing_usernames = set(target_conn.execute(select(destination_users.c.username)).scalars())
+        existing_emails = set(target_conn.execute(select(destination_users.c.email)).scalars())
+        users_migrated = 0
+        users_skipped = 0
+
+        for row in source_conn.execute(select(source_users)).mappings():
+            user = dict(row)
+            if user['username'] in existing_usernames or user['email'] in existing_emails:
+                users_skipped += 1
+                continue
+            target_conn.execute(insert(destination_users).values(
+                username=user['username'],
+                email=user['email'],
+                password_hash=user['password_hash'],
+                created_at=normalize_datetime(user.get('created_at')),
+            ))
+            existing_usernames.add(user['username'])
+            existing_emails.add(user['email'])
+            users_migrated += 1
+
+        contacts_migrated = 0
+        for row in source_conn.execute(select(source_contacts)).mappings():
+            contact = dict(row)
+            target_conn.execute(insert(destination_contacts).values(
+                name=contact['name'],
+                email=contact['email'],
+                message=contact['message'],
+                created_at=normalize_datetime(contact.get('created_at')),
+            ))
+            contacts_migrated += 1
+
+    print(f'Migration complete: {users_migrated} users migrated, {users_skipped} users skipped, {contacts_migrated} contacts migrated.')
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Migrate sqlite searchable.db into a DATABASE_URL target (Postgres)')
-    parser.add_argument('--sqlite-file', default='searchable.db', help='Path to sqlite file (default: searchable.db)')
+    parser = argparse.ArgumentParser(description='Migrate searchable.db from SQLite to PostgreSQL.')
+    parser.add_argument('--sqlite-file', default='searchable.db', help='Path to the SQLite file (default: searchable.db)')
     args = parser.parse_args()
 
     database_url = os.environ.get('DATABASE_URL')
     if not database_url:
-        print('ERROR: DATABASE_URL environment variable must be set to the target Postgres database URL')
-        sys.exit(2)
+        sys.exit('ERROR: Set DATABASE_URL to the target PostgreSQL connection URL.')
+    if not os.path.exists(args.sqlite_file):
+        sys.exit(f'ERROR: SQLite file not found: {args.sqlite_file}')
 
-    sqlite_path = args.sqlite_file
-    if not os.path.exists(sqlite_path):
-        print(f'ERROR: sqlite file not found: {sqlite_path}')
-        sys.exit(2)
-
-    sqlite_url = f'sqlite:///{os.path.abspath(sqlite_path)}'
-    migrate(sqlite_url, database_url)
+    try:
+        migrate(f'sqlite:///{os.path.abspath(args.sqlite_file)}', database_url)
+    except (RuntimeError, IntegrityError, SQLAlchemyError) as error:
+        sys.exit(f'Migration failed: {error}')
