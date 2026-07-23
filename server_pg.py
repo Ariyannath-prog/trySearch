@@ -183,10 +183,23 @@ def api_logout():
 @app.route('/api/me', methods=['GET'])
 def api_me():
     user_id = session.get('user_id')
-    username = session.get('username')
-    if user_id and username:
-        return jsonify({'logged_in': True, 'user_id': user_id, 'username': username})
+    if user_id:
+        with engine.connect() as conn:
+            stmt = select(users.c.id, users.c.username, users.c.email, users.c.created_at).where(
+                users.c.id == user_id
+            ).limit(1)
+            row = conn.execute(stmt).mappings().first()
+        if row:
+            return jsonify({'logged_in': True, 'user': row_to_dict(row)})
+        session.clear()
     return jsonify({'logged_in': False})
+
+
+@app.route('/profile')
+def profile_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'profile.html')
 
 
 @app.route('/login')
@@ -223,7 +236,7 @@ def login_page():
             const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
             const j=await res.json();
             const note=document.getElementById('note');
-            if(res.ok){ note.textContent='Logged in. Redirecting...'; setTimeout(()=>location.href='/',800); } else { note.textContent = j.error || 'Login failed'; }
+            if(res.ok){ note.textContent='Logged in. Redirecting...'; setTimeout(()=>location.href='/profile',400); } else { note.textContent = j.error || 'Login failed'; }
           });
         </script>
       </body>

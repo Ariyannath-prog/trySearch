@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your profile — trySearch</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="account-page">
+    <header class="site-header">
+      <div class="container header-inner">
+        <a href="/" class="brand" aria-label="trySearch home">
+          <span class="brand-mark">t</span>
+          <span class="brand-name">trySearch</span>
+        </a>
+        <a href="/" class="text-button">Back to home</a>
+      </div>
+    </header>
+
+    <main class="account-main container">
+      <section class="account-card" aria-labelledby="profile-title">
+        <p class="eyebrow">Account</p>
+        <h1 id="profile-title">Your profile</h1>
+        <p class="account-intro">Review the account information associated with your trySearch profile.</p>
+        <p class="form-note alert alert-error" id="profile-error" hidden></p>
+
+        <dl class="profile-details" id="profile-details" hidden>
+          <div><dt>Username</dt><dd id="profile-username"></dd></div>
+          <div><dt>Email</dt><dd id="profile-email"></dd></div>
+          <div><dt>Member since</dt><dd id="profile-created-at"></dd></div>
+        </dl>
+
+        <p class="account-loading" id="profile-loading">Loading your profile…</p>
+        <div class="account-actions">
+          <button class="button button-secondary" id="logout-button" type="button">Log out</button>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const errorMessage = document.getElementById('profile-error');
+      const loadingMessage = document.getElementById('profile-loading');
+      const profileDetails = document.getElementById('profile-details');
+
+      function showError(message) {
+        loadingMessage.hidden = true;
+        errorMessage.textContent = message;
+        errorMessage.hidden = false;
+      }
+
+      (async function loadProfile() {
+        try {
+          const response = await fetch('/api/me');
+          const result = await response.json();
+          if (!response.ok || !result.logged_in) {
+            window.location.replace('/login');
+            return;
+          }
+
+          const user = result.user;
+          document.getElementById('profile-username').textContent = user.username;
+          document.getElementById('profile-email').textContent = user.email;
+          document.getElementById('profile-created-at').textContent = user.created_at
+            ? new Date(user.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+            : 'Not available';
+          loadingMessage.hidden = true;
+          profileDetails.hidden = false;
+        } catch (error) {
+          showError('We could not load your profile. Please refresh and try again.');
+        }
+      })();
+
+      document.getElementById('logout-button').addEventListener('click', async () => {
+        try {
+          const response = await fetch('/api/logout', { method: 'POST' });
+          if (!response.ok) throw new Error('Logout failed');
+          window.location.replace('/');
+        } catch (error) {
+          showError('We could not log you out. Please try again.');
+        }
+      });
+    </script>
+  </body>
+</html>

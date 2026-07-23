@@ -20,7 +20,7 @@
           <a href="#contact">Contact</a>
         </nav>
         <div class="header-actions">
-          <a href="/login" class="button button-primary">Start for free</a>
+          <a href="/login" class="button button-primary" id="auth-link">Start for free</a>
         </div>
         <button class="mobile-menu-toggle" aria-label="Toggle menu">
           <span></span>
@@ -30,12 +30,10 @@
       </div>
       <div class="mobile-nav" aria-hidden="true">
         <a href="#product">Product</a>
-        <a href="#solutions">Solutions</a>
         <a href="#resources">Resources</a>
         <a href="#pricing">Pricing</a>
         <a href="#contact">Contact</a>
-        <a href="/login">Login</a>
-        <a href="#trial" class="button button-primary mobile-cta">Start for free</a>
+        <a href="/login" class="button button-primary mobile-cta">Start for free</a>
       </div>
     </header>
 
@@ -234,17 +232,16 @@
           const j = await res.json();
           const authLink = document.getElementById('auth-link');
           if(!authLink) return;
+          const mobileAuthLink = document.getElementById('mobile-auth-link');
           if(j.logged_in){
-            authLink.textContent = `Logout (${j.username})`;
-            authLink.href = '#';
-            authLink.addEventListener('click', async (e)=>{ e.preventDefault(); await fetch('/api/logout',{method:'POST'}); window.location.reload(); });
-            const nav = document.querySelector('.site-nav');
-            if(nav && !document.getElementById('admin-link')){
-              const a = document.createElement('a'); a.href='/admin/contacts'; a.id='admin-link'; a.textContent='Admin'; nav.appendChild(a);
-            }
+            const profileLabel = `Profile (${j.user.username})`;
+            authLink.textContent = profileLabel;
+            authLink.href = '/profile';
+            if(mobileAuthLink){ mobileAuthLink.textContent = profileLabel; mobileAuthLink.href = '/profile'; }
           } else {
             authLink.textContent = 'Login';
             authLink.href = '/login';
+            if(mobileAuthLink){ mobileAuthLink.textContent = 'Login'; mobileAuthLink.href = '/login'; }
           }
         }catch(err){ console.warn('auth check failed', err); }
       })();

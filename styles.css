@@ -139,6 +139,57 @@ select {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.account-main {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 5.25rem);
+  padding-top: 4rem;
+  padding-bottom: 4rem;
+}
+
+.account-card {
+  width: min(100%, 38rem);
+  padding: clamp(1.75rem, 5vw, 3.25rem);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.75rem;
+  box-shadow: 0 35px 90px rgba(8, 14, 27, 0.28);
+}
+
+.account-card h1 {
+  margin: 0;
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.account-intro,
+.account-loading {
+  color: #c6d0e4;
+  margin: 1rem 0 0;
+}
+
+.profile-details {
+  display: grid;
+  gap: 0.75rem;
+  margin: 2rem 0 0;
+}
+
+.profile-details div {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 0.7fr) 1.3fr;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 1rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.profile-details dt { color: #9cb2d3; }
+.profile-details dd { margin: 0; overflow-wrap: anywhere; }
+
+.account-actions { margin-top: 2rem; }
+.account-actions .button { border: 0; cursor: pointer; }
+
 .mobile-menu-toggle {
   display: none;
   width: 2.5rem;
