@@ -1,1 +1,1 @@
-web: gunicorn server_pg:app
+web: gunicorn server_mongo:app

@@ -1,6 +1,6 @@
 # trySearch Replica with Backend
 
-This repository contains a static frontend replica of the trySearch homepage plus a simple Flask backend using SQLite.
+This repository contains a static frontend replica of the trySearch homepage plus a simple Flask backend.
 
 ## Local setup
 
@@ -11,7 +11,7 @@ cd /Users/ariyannath/Desktop/trySearch
 python3 -m pip install -r requirements.txt
 ```
 
-2. Start the app:
+2. Start the app (SQLite for local development):
 
 ```bash
 python3 server.py
@@ -19,50 +19,125 @@ python3 server.py
 
 3. Open `http://127.0.0.1:8000` in your browser.
 
-## Backend
+## Backend Options
 
-- `server.py` serves the frontend and provides the API endpoints:
-  - `GET /api/contacts` — fetch saved contact submissions
-  - `POST /api/contacts` — save a contact submission to SQLite
-- `searchable.db` is created automatically when the app first runs.
+The app supports three database backends:
 
-## Deployment
+- **server.py** — uses local SQLite (best for local dev)
+- **server_pg.py** — uses Postgres (good for production with DATABASE_URL)
+- **server_mongo.py** — uses MongoDB Atlas (requires MONGODB_URI) ← **recommended for scalability**
 
-GitHub Pages can host only static files and cannot run the Flask backend.
+### API Endpoints
 
-To run the full website online with the backend and SQLite database, deploy the repository to a web host that supports Python server apps, such as Render, Railway, Fly, or Heroku.
+- `GET /api/contacts` — fetch saved contact submissions
+- `POST /api/contacts` — save a contact submission
+- `GET /api/health` — check database connection status
+- `POST /api/register` — create a user account
+- `POST /api/login` — log in with username and password
+- `POST /api/logout` — log out
+- `GET /api/me` — get current login status
+- `GET /admin/contacts` — view all contacts (requires login)
 
-### Example hosting options
+## Deployment with MongoDB (Recommended)
 
-- Render: create a new web service using this repo and set the build command to `pip install -r requirements.txt` and start command to `gunicorn server_pg:app`.
-- Railway: connect the repo and use the default Python deployment.
-- Heroku: add `Procfile` and deploy the app.
+### Step 1: Create MongoDB Atlas Cluster
 
-A `render.yaml` file is included so Render can create the service settings automatically when you connect this repository.
+1. Go to https://www.mongodb.com/cloud/atlas
+2. Sign up (free tier available)
+3. Create a new project
+4. Click **Build a Cluster** → choose **Free tier (M0)**
+5. Select your region
+6. Click **Create Cluster**
+7. Once created, click **Connect** → **Drivers** → copy the connection string
+   - The string looks like: `mongodb+srv://user:password@cluster.mongodb.net/dbname?retryWrites=true&w=majority`
 
-### Viewing saved submissions
+### Step 2: Set MongoDB User & Network Access
 
-- JSON API: `https://<your-render-url>/api/contacts`
-- Browser view (admin): `https://<your-render-url>/admin/contacts` (requires login)
+1. In MongoDB Atlas, go to **Database Access** → **Add New Database User**
+   - Choose **Password** authentication
+   - Save the username and password
+   - Make sure to copy the connection string format with your credentials
 
-### Authentication
+2. Go to **Network Access** → **Add IP Address**
+   - Choose **Allow Access from Anywhere** (0.0.0.0/0) for development
+   - Or add your specific IP for better security
 
-The site now includes a simple username/email password system backed by a database. By default the app will use the `DATABASE_URL` environment variable (Postgres) if provided; otherwise it falls back to the local SQLite file for development.
+### Step 3: Deploy to Render
 
-- Register: `https://<your-render-url>/register`
-- Login: `https://<your-render-url>/login`
-- API endpoints:
-  - `POST /api/register` — JSON {username,email,password}
-  - `POST /api/login` — JSON {username,password,remember}
-  - `POST /api/logout`
-  - `GET /api/me` — returns login state
+1. Push this repository to GitHub (if not already pushed)
+2. Go to https://render.com
+3. Create a new web service and connect your GitHub repo
+4. Set the following environment variables in **Environment**:
 
-Sessions are stored in a signed cookie (Flask session). When 'Remember me' is checked during login, the session is made permanent for 30 days.
+   | Variable | Value |
+   |----------|-------|
+   | MONGODB_URI | `mongodb+srv://user:password@cluster.mongodb.net/trysearch?retryWrites=true&w=majority` |
+   | SECRET_KEY | A strong random string (e.g., from https://randomkeygen.com/) |
 
-### Using Postgres in production
+5. Make sure **Procfile** exists (it should run `gunicorn server_mongo:app`)
+6. Click **Deploy**
 
-- Set `DATABASE_URL` in your Render (or other host) environment to a Postgres connection string, e.g. `postgres://username:password@host:5432/dbname`.
-- Set `SECRET_KEY` to a strong random string in the environment so session cookies are secure.
-- The app will automatically create the required tables on first run when connected to Postgres.
+### Step 4: Verify
 
-SQLite is suitable for development and small demos, but for production you should use a hosted Postgres (or another managed database) for persistence across deploys and scaling.
+After deployment:
+
+1. Open your site: `https://your-service.onrender.com`
+2. Check health: `https://your-service.onrender.com/api/health`
+   - Should show: `{"status":"ok","db":"mongodb"}`
+3. Submit a contact form
+4. Check `/api/contacts` to see your data saved
+5. Redeploy again — your data should persist ✓
+
+### Step 5: Migrate from Postgres (optional)
+
+If you have existing data in Postgres and want to copy it to MongoDB:
+
+```bash
+export MONGODB_URI="mongodb+srv://user:password@cluster.mongodb.net/trysearch?retryWrites=true&w=majority"
+export DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+python3 migrate_postgres_to_mongo.py
+```
+
+Then redeploy your app on Render with MONGODB_URI set.
+
+## Authentication
+
+The site includes username/email and password authentication backed by the database.
+
+- **Register**: `/register`
+- **Login**: `/login`
+- Sessions use signed cookies (Flask). When "Remember me" is checked, the session lasts 30 days.
+- Set `SECRET_KEY` environment variable to a strong random string for secure cookies.
+
+## Files
+
+- `server.py` — Flask app with local SQLite
+- `server_pg.py` — Flask app with Postgres (requires DATABASE_URL)
+- `server_mongo.py` — Flask app with MongoDB (requires MONGODB_URI) ← **Use this for Render + MongoDB**
+- `migrate_sqlite_to_postgres.py` — Migration script from SQLite → Postgres
+- `migrate_postgres_to_mongo.py` — Migration script from Postgres → MongoDB
+- `Procfile` — Tells Render which server to run
+- `requirements.txt` — Python dependencies (Flask, gunicorn, pymongo, SQLAlchemy, psycopg)
+
+## Why MongoDB?
+
+- **Scalability**: Easy to scale horizontally
+- **Flexibility**: Schema-less documents (no migrations needed)
+- **Reliability**: MongoDB Atlas is fully managed and backed up
+- **Free tier**: Generous free tier on MongoDB Atlas
+- **Easy integration**: Works seamlessly with the current Flask app
+
+## Troubleshooting
+
+**MongoDB connection error**: Ensure MONGODB_URI is set correctly and your IP is whitelisted in MongoDB Atlas Network Access.
+
+**Data not persisting**: Make sure you're running `server_mongo.py` (check Procfile) and MONGODB_URI is set as an environment variable.
+
+**Duplicate key error on register**: Clear the users collection in MongoDB and try again (or use a different username).
+
+## Support
+
+For issues or questions, check:
+- MongoDB Atlas docs: https://docs.atlas.mongodb.com/
+- Render docs: https://render.com/docs
+- Flask docs: https://flask.palletsprojects.com/
