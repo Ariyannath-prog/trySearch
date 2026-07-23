@@ -71,8 +71,15 @@ The app supports three database backends:
 
    | Variable | Value |
    |----------|-------|
-   | MONGODB_URI | `mongodb+srv://user:password@cluster.mongodb.net/trysearch?retryWrites=true&w=majority` |
+   | MONGODB_HOST | Host from Atlas Connect (e.g. `trysearch.xxxxx.mongodb.net`) |
+   | MONGODB_USER | Database user (e.g. `nathariyan97_db_user`) |
+   | MONGODB_PASSWORD | That user's password |
+   | MONGODB_DB_NAME | `trysearch` (optional; default is `trysearch`) |
    | SECRET_KEY | A strong random string (e.g., from https://randomkeygen.com/) |
+
+   **Alternative:** set a single `MONGODB_URI` instead of the four `MONGODB_*` variables above. The app normalizes common typos (wrong username spelling, broken hostname with an extra `@`).
+
+   Example URI: `mongodb+srv://user:password@trysearch.xxxxx.mongodb.net/trysearch?retryWrites=true&w=majority`
 
 5. Make sure **Procfile** exists (it should run `gunicorn server_mongo:app`)
 6. Click **Deploy**

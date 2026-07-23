@@ -14,22 +14,24 @@ import os
 import sys
 from datetime import datetime
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Text, DateTime, select
-from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 
-MONGODB_URI = os.environ.get('MONGODB_URI')
-DATABASE_URL = os.environ.get('DATABASE_URL')
+from mongo_config import create_mongo_client, get_database, resolve_mongodb_settings, safe_uri_for_logs
 
-if not MONGODB_URI:
-    print('ERROR: MONGODB_URI environment variable must be set')
+try:
+    MONGODB_URI, MONGODB_DB_NAME = resolve_mongodb_settings()
+except ValueError as exc:
+    print(f'ERROR: {exc}')
     sys.exit(1)
+
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if not DATABASE_URL:
     print('ERROR: DATABASE_URL environment variable must be set')
     sys.exit(1)
 
 print(f'Source (Postgres): {DATABASE_URL}')
-print(f'Target (MongoDB): {MONGODB_URI}')
+print(f'Target (MongoDB): {safe_uri_for_logs(MONGODB_URI)} (db={MONGODB_DB_NAME})')
 
 # Connect to Postgres
 engine = create_engine(DATABASE_URL, future=True)
@@ -55,9 +57,8 @@ users = Table(
     Column('created_at', DateTime, nullable=False),
 )
 
-# Connect to MongoDB
-mongo_client = MongoClient(MONGODB_URI)
-mongo_db = mongo_client['trysearch']
+mongo_client = create_mongo_client()
+mongo_db = get_database(mongo_client)
 contacts_col = mongo_db['contacts']
 users_col = mongo_db['users']
 

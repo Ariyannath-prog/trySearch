@@ -2,20 +2,18 @@ import os
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory, abort, session, redirect
 from werkzeug.security import generate_password_hash, check_password_hash
-from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 
+from mongo_config import create_mongo_client, get_database, resolve_mongodb_settings, safe_uri_for_logs
+
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-# Use MONGODB_URI env var for hosted MongoDB, otherwise error (MongoDB requires external connection)
-MONGODB_URI = os.environ.get('MONGODB_URI')
-if not MONGODB_URI:
-    raise ValueError('MONGODB_URI environment variable not set. Set it to your MongoDB Atlas connection string.')
+MONGODB_URI, MONGODB_DB_NAME = resolve_mongodb_settings()
+print(f'MongoDB: connecting to db={MONGODB_DB_NAME} ({safe_uri_for_logs(MONGODB_URI)})')
 
-# Connect to MongoDB
-client = MongoClient(MONGODB_URI)
-db = client['trysearch']
+client = create_mongo_client()
+db = get_database(client)
 contacts_col = db['contacts']
 users_col = db['users']
 
