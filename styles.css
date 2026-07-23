@@ -90,7 +90,7 @@ select {
 
 .site-nav {
   display: flex;
-  gap: 1.5rem;
+  gap: 3rem;
   flex-wrap: wrap;
   color: #c2c9d9;
 }
@@ -601,4 +601,7 @@ select {
   .mobile-nav { border-top: 1px solid rgba(255, 255, 255, 0.06); }
   .mobile-nav a { color: #e1e8ff; }
   .mobile-cta { width: 100%; justify-content: center; }
+}
+#message_image{
+  border-radius: 50px;
 }
