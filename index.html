@@ -64,7 +64,36 @@
                 <span class="metric-label">AI Visibility Score</span>
                 <strong>92%</strong>
               </div>
-              <div class="chart"></div>
+              <div class="chart" role="img" aria-label="AI visibility increased from 56 percent to 92 percent over the last six months">
+                <svg viewBox="0 0 320 156" aria-hidden="true" focusable="false">
+                  <defs>
+                    <linearGradient id="visibility-area" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stop-color="#ff7f11" stop-opacity="0.38" />
+                      <stop offset="100%" stop-color="#ff7f11" stop-opacity="0.02" />
+                    </linearGradient>
+                    <filter id="visibility-glow" x="-20%" y="-30%" width="140%" height="160%">
+                      <feGaussianBlur stdDeviation="3" result="blur" />
+                      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
+                  </defs>
+                  <g class="chart-grid" aria-hidden="true">
+                    <path d="M24 28H296M24 58H296M24 88H296M24 118H296" />
+                  </g>
+                  <path class="chart-area" d="M24 106C42 98 54 91 72 90S96 100 112 94S134 74 150 70S174 87 190 81S212 55 228 48S250 66 266 58S284 38 296 30V118H24Z" />
+                  <path class="chart-line" d="M24 106C42 98 54 91 72 90S96 100 112 94S134 74 150 70S174 87 190 81S212 55 228 48S250 66 266 58S284 38 296 30" />
+                  <circle class="chart-point" cx="296" cy="30" r="5" filter="url(#visibility-glow)" />
+                  <g class="chart-score">
+                    <rect x="257" y="3" width="39" height="20" rx="10" />
+                    <text x="276.5" y="17" text-anchor="middle">92%</text>
+                  </g>
+                  <g class="chart-labels" aria-hidden="true">
+                    <text x="24" y="142">Jan</text>
+                    <text x="112" y="142">Mar</text>
+                    <text x="200" y="142">May</text>
+                    <text x="280" y="142">Jun</text>
+                  </g>
+                </svg>
+              </div>
               <div class="detail-row">
                 <span>ChatGPT</span>
                 <strong>Top 5</strong>
@@ -190,7 +219,7 @@
       <div class="container footer-grid">
         <div>
           <a href="/" class="brand-footer">
-            <span class="brand-mark">S</span>
+            <span class="brand-mark">t</span> &nbsp;
             <span class="brand-name">trySearch</span>
           </a>
           <p>trySearch is an AI search optimization platform that helps brands track visibility and analytics across AI engines like ChatGPT and Claude.</p>
