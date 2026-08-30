@@ -1,67 +1,51 @@
-import os
-import sqlite3
-from datetime import datetime, timedelta
+"""Static pages, health and the contact form."""
+
+from flask import Blueprint
+from datetime import date, datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory, abort, session, redirect
-from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import (
+    create_engine,
+    MetaData,
+    Table,
+    Column,
+    Boolean,
+    Float,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    UniqueConstraint,
+    select,
+    insert,
+    update,
+    desc,
+    func,
+    text,
+)
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+import os
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'searchable.db')
+from app.config import BASE_DIR
+from app import db
+from app.db import engine
+from app.models import contacts
+from app.utils import row_to_dict
 
-app = Flask(__name__, static_folder='.', static_url_path='')
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-me')
-app.permanent_session_lifetime = timedelta(days=30)
+pages_bp = Blueprint('pages', __name__)
 
-
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db():
-    os.makedirs(BASE_DIR, exist_ok=True)
-    with get_db_connection() as conn:
-        conn.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS contacts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                message TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-            '''
-        )
-        # users table for authentication
-        conn.execute(
-            '''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                email TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-            '''
-        )
-        conn.commit()
-
-
-@app.route('/')
+@pages_bp.route('/')
 def index():
     return send_from_directory(BASE_DIR, 'index.html')
 
-
-@app.route('/<path:path>')
+@pages_bp.route('/<path:path>')
 def static_files(path):
     filepath = os.path.join(BASE_DIR, path)
     if os.path.exists(filepath) and os.path.isfile(filepath):
         return send_from_directory(BASE_DIR, path)
     abort(404)
 
-
-@app.route('/api/contacts', methods=['GET', 'POST'])
-def contacts():
+@pages_bp.route('/api/contacts', methods=['GET', 'POST'])
+def contacts_endpoint():
     if request.method == 'POST':
         data = request.get_json(silent=True)
         if not data:
@@ -74,114 +58,70 @@ def contacts():
         if not name or not email or not message:
             return jsonify({'error': 'Name, email, and message are required.'}), 400
 
-        created_at = datetime.utcnow().isoformat() + 'Z'
-        with get_db_connection() as conn:
+        created_at = datetime.utcnow()
+        with engine.begin() as conn:
             conn.execute(
-                'INSERT INTO contacts (name, email, message, created_at) VALUES (?, ?, ?, ?)',
-                (name, email, message, created_at),
+                insert(contacts).values(name=name, email=email, message=message, created_at=created_at)
             )
-            conn.commit()
-
         return jsonify({'status': 'success', 'message': 'Contact request submitted.'}), 201
 
-    with get_db_connection() as conn:
-        rows = conn.execute(
-            'SELECT id, name, email, message, created_at FROM contacts ORDER BY created_at DESC LIMIT 100'
-        ).fetchall()
-        contacts = [dict(row) for row in rows]
-    return jsonify({'status': 'success', 'contacts': contacts})
+    # GET
+    with engine.connect() as conn:
+        stmt = select(contacts.c.id, contacts.c.name, contacts.c.email, contacts.c.message, contacts.c.created_at).order_by(desc(contacts.c.created_at)).limit(100)
+        result = conn.execute(stmt)
+        rows = [row_to_dict(r) for r in result.mappings().all()]
+    return jsonify({'status': 'success', 'contacts': rows})
 
-
-@app.route('/api/health', methods=['GET'])
+@pages_bp.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok'})
-
-
-# Authentication endpoints
-@app.route('/api/register', methods=['POST'])
-def api_register():
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({'error': 'Invalid payload'}), 400
-    username = (data.get('username') or '').strip()
-    email = (data.get('email') or '').strip()
-    password = (data.get('password') or '').strip()
-
-    if not username or not email or not password:
-        return jsonify({'error': 'username, email and password required'}), 400
-
-    password_hash = generate_password_hash(password)
-    created_at = datetime.utcnow().isoformat() + 'Z'
     try:
-        with get_db_connection() as conn:
-            conn.execute(
-                'INSERT INTO users (username, email, password_hash, created_at) VALUES (?, ?, ?, ?)',
-                (username, email, password_hash, created_at),
-            )
-            conn.commit()
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'User with that username or email already exists.'}), 400
+        with engine.connect() as conn:
+            conn.execute(text('SELECT 1'))
+    except SQLAlchemyError:
+        return jsonify({'status': 'error', 'db': engine.url.get_backend_name()}), 503
+    return jsonify({
+        'status': 'ok',
+        'db': engine.url.get_backend_name(),
+        'database_identity': db.DATABASE_IDENTITY,
+    })
 
-    return jsonify({'status': 'success', 'message': 'User registered.'}), 201
+@pages_bp.route('/analytics')
+def analytics_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'analytics.html')
 
+@pages_bp.route('/prompt-intelligence')
+def prompt_intelligence_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'prompt_intelligence.html')
 
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({'error': 'Invalid payload'}), 400
-    username = (data.get('username') or '').strip()
-    password = (data.get('password') or '').strip()
-    remember = bool(data.get('remember'))
+@pages_bp.route('/visibility-tracking')
+def visibility_tracking_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'visibility_tracking.html')
 
-    if not username or not password:
-        return jsonify({'error': 'username and password required'}), 400
+@pages_bp.route('/content-studio')
+def content_studio_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'content_studio.html')
 
-    with get_db_connection() as conn:
-        row = conn.execute('SELECT id, username, password_hash FROM users WHERE username = ? OR email = ? LIMIT 1', (username, username)).fetchone()
-        if not row:
-            return jsonify({'error': 'Invalid credentials'}), 401
-        user = dict(row)
-        if not check_password_hash(user['password_hash'], password):
-            return jsonify({'error': 'Invalid credentials'}), 401
+@pages_bp.route('/workspace')
+def workspace_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'workspace.html')
 
-    # login success
-    session.clear()
-    session['user_id'] = user['id']
-    session['username'] = user['username']
-    session.permanent = remember
-    return jsonify({'status': 'success', 'message': 'Logged in', 'username': user['username']})
-
-
-@app.route('/api/logout', methods=['POST'])
-def api_logout():
-    session.clear()
-    return jsonify({'status': 'success', 'message': 'Logged out'})
-
-
-@app.route('/api/me', methods=['GET'])
-def api_me():
-    user_id = session.get('user_id')
-    if user_id:
-        with get_db_connection() as conn:
-            row = conn.execute(
-                'SELECT id, username, email, created_at FROM users WHERE id = ?', (user_id,)
-            ).fetchone()
-        if row:
-            user = dict(row)
-            return jsonify({'logged_in': True, 'user': user})
-        session.clear()
-    return jsonify({'logged_in': False})
-
-
-@app.route('/profile')
+@pages_bp.route('/profile')
 def profile_page():
     if not session.get('user_id'):
         return redirect('/login')
     return send_from_directory(BASE_DIR, 'profile.html')
 
-
-@app.route('/login')
+@pages_bp.route('/login')
 def login_page():
     # simple HTML page that posts to /api/login via fetch
     html = """
@@ -223,8 +163,7 @@ def login_page():
     """
     return html
 
-
-@app.route('/register')
+@pages_bp.route('/register')
 def register_page():
     html = """
     <!doctype html>
@@ -261,22 +200,20 @@ def register_page():
     """
     return html
 
-
-@app.route('/admin/contacts')
+@pages_bp.route('/admin/contacts')
 def admin_contacts():
     # require login
     if not session.get('user_id'):
         return redirect('/login')
 
-    with get_db_connection() as conn:
-        rows = conn.execute(
-            'SELECT id, name, email, message, created_at FROM contacts ORDER BY created_at DESC'
-        ).fetchall()
-        contacts = [dict(row) for row in rows]
+    with engine.connect() as conn:
+        stmt = select(contacts.c.id, contacts.c.name, contacts.c.email, contacts.c.message, contacts.c.created_at).order_by(desc(contacts.c.created_at))
+        result = conn.execute(stmt)
+        rows = [row_to_dict(r) for r in result.mappings().all()]
 
     rows_html = ''.join(
         f"<tr><td>{c['id']}</td><td>{c['name']}</td><td>{c['email']}</td><td>{c['message']}</td><td>{c['created_at']}</td></tr>"
-        for c in contacts
+        for c in rows
     )
     html = f"""
     <!DOCTYPE html>
@@ -300,7 +237,7 @@ def admin_contacts():
       </head>
       <body>
         <h1>Saved contact submissions</h1>
-        <p class='note'>This page reads directly from the SQLite database file stored on the Render instance.</p>
+        <p class='note'>This page reads directly from the database used by the app (Postgres or SQLite depending on configuration).</p>
         <p><a href='/'>Back to homepage</a></p>
         <div class='table-wrap'>
           <table>
@@ -316,11 +253,3 @@ def admin_contacts():
     </html>
     """
     return html
-
-
-# Ensure the SQLite database exists before the app starts
-init_db()
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port)

@@ -1,8 +1,7 @@
 Flask>=3.1
 gunicorn>=21.0
 SQLAlchemy>=2.0
+alembic>=1.13
 psycopg[binary]>=3.1
-pymongo[srv]>=4.5
-dnspython>=2.4
 cryptography>=45.0
 certifi>=2025.0

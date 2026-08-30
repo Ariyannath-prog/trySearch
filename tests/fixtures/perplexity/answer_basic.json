@@ -1,0 +1,509 @@
+{
+  "background": false,
+  "completed_at": 1788033484,
+  "created_at": 1788033484,
+  "error": null,
+  "frequency_penalty": 0,
+  "id": "resp_9a51976d-36f1-495f-92da-a8c7ff71e88f",
+  "incomplete_details": null,
+  "instructions": "Answer the user directly using current web evidence. Use the web search tool, preserve source annotations, and do not invent citations.",
+  "max_output_tokens": 1200,
+  "max_tool_calls": null,
+  "metadata": {},
+  "model": "openai/gpt-5.6-luna",
+  "object": "response",
+  "output": [
+    {
+      "queries": [
+        "best AI search visibility tools brands 2026",
+        "AI search visibility platform brand monitoring ChatGPT Perplexity Claude",
+        "GEO AI search optimization tools brands comparison 2026"
+      ],
+      "results": [
+        {
+          "date": "2026-02-18",
+          "id": 1,
+          "last_updated": "2026-08-26",
+          "snippet": "The best AI visibility tool in 2026 is **Frase** for teams who want to monitor where AI search cites their brand *and* close the gap in the same workflow.",
+          "source": "web",
+          "title": "10 Best AI Visibility Tools in 2026 (Compared + Free ...",
+          "url": "https://www.frase.io/blog/the-10-best-ai-visibility-tools-in-2026"
+        },
+        {
+          "date": "2025-09-03",
+          "id": 2,
+          "last_updated": "2026-06-25",
+          "snippet": "Brand visibility in AI search is how often and how prominently your brand appears inside AI-generated answers.\nIt\u2019s a new layer on top of classic SEO visibility.",
+          "source": "web",
+          "title": "Brand Visibility in AI Search...",
+          "url": "https://www.therankmasters.com/insights/ai-visibility/best-tools-tracking-brand-visibility-ai-search"
+        },
+        {
+          "date": "2026-08-12",
+          "id": 3,
+          "last_updated": "2026-08-23",
+          "snippet": "|Tool|Best for|AI engines covered|Price|\n...\n|Use case|Capabilities to prioritize|Best-fit tools|",
+          "source": "web",
+          "title": "12 Best AI Search Visibility Tools for Brands in 2026 I Birdeye",
+          "url": "https://birdeye.com/blog/best-ai-search-visibility-tools/"
+        },
+        {
+          "date": "2026-05-29",
+          "id": 4,
+          "last_updated": "2026-08-29",
+          "snippet": "|Category|Best Tool|\n...\n|Best overall for agencies|Rankability|\n|Best specialist AI search analytics platform|Peec AI|\n|Best low-cost AI visibility tracker|LLMrefs|\n|Best enterprise AI visibility platform|Profound|\n|Best enterprise AI optimization infrastructure|Scrunch AI|\n|Best mid-market GEO platform|AthenaHQ|\n|Best budget-friendly starter tracker|Otterly AI|\n|Best AI Overviews-focused tracker|ZipTie|\n|Best traditional SEO suite with AI visibility|Ahrefs Brand Radar|\n...\n|Rank|Tool|Best For|Starting Price|Funding / Status|\n...\nIf you\u2019re an agency that needs to track visibility and improve client results, start with Rankability.",
+          "source": "web",
+          "title": "22 Best AI Search Rank Tracking & Visibility Tools for 2026",
+          "url": "https://www.rankability.com/blog/best-ai-search-visibility-tracking-tools/"
+        },
+        {
+          "date": "2026-07-31",
+          "id": 5,
+          "last_updated": "2026-08-03",
+          "snippet": "Evertune is the industry's most comprehensive end-to-end AI visibility platform.",
+          "source": "web",
+          "title": "The 10 Best AI Visibility Tools for 2026 - Evertune",
+          "url": "https://www.evertune.ai/resources/insights-on-ai/the-10-best-ai-visibility-tools-for-2026"
+        },
+        {
+          "date": "2025-12-12",
+          "id": 6,
+          "last_updated": "2026-08-16",
+          "snippet": "|**Tool**|**Pros**|**Cons**|\n...\n|Semrush AI Visibility Tool|- Easy to use, especially for existing Semrush users - Great AI strategic opportunities|- Limitations to AI platform coverage|\n|Profound|- Specialist platform designed for monitoring AI visibility - Most comprehensive AI platform tracking|- Strategic opportunities lack prioritisation - The most expensive option to access the full value|",
+          "source": "web",
+          "title": "The 3 BEST AI Search Visibility Tools for 2026",
+          "url": "https://exposureninja.com/blog/best-ai-search-visibility-tools/"
+        },
+        {
+          "id": 7,
+          "last_updated": "2026-08-25",
+          "snippet": "- **Nightwatch**: The most versatile AI tracking and brand monitoring platform\u2014combines LLM monitoring, search engine tracking for AI lookups, prompt research, and citation-level sentiment analysis alongside traditional SEO",
+          "source": "web",
+          "title": "Best AI Search Monitoring Tools for Marketers in 2026",
+          "url": "https://nightwatch.io/blog/best-ai-search-monitoring-tools/"
+        },
+        {
+          "date": "2026-07-28",
+          "id": 8,
+          "last_updated": "2026-08-26",
+          "snippet": "Start by conducting a **baseline audit** on the AI engines most relevant to your audience \u2013 ChatGPT, Perplexity, Gemini, and Google AI Overviews.\nSelect 25\u201350 high-intent prompts, mixing branded and generic queries.",
+          "source": "web",
+          "title": "20 Best AI Search Visibility Tools (2026): Free & Paid, Ranked",
+          "url": "https://www.data-mania.com/blog/best-ai-search-tools-2026/"
+        },
+        {
+          "id": 9,
+          "last_updated": "2026-08-29",
+          "snippet": "# Best AI Search Visibility Software of 2026\n...\nSearcherries is an AI Visibility Tool that helps brands understand and improve how they\u2019re represented in AI-generated answers across ChatGPT, Gemini, Perplexity, Claude, and Google AI Overviews.",
+          "source": "web",
+          "title": "Best AI Search Visibility Software - 2026 Reviews & Pricing",
+          "url": "https://www.softwareadvice.com/category/5042-ai-search-visibility/"
+        },
+        {
+          "date": "2026-05-16",
+          "id": 10,
+          "last_updated": "2026-08-25",
+          "snippet": "|Tool|Starting price|Engines tracked|Best for|Free trial|Notable feature|",
+          "source": "web",
+          "title": "10 Best AI Search Visibility Tools in 2026 (Compared & Reviewed)",
+          "url": "https://geoptie.com/blog/best-ai-search-visibility-tools"
+        },
+        {
+          "date": "2026-06-23",
+          "id": 11,
+          "last_updated": "2026-08-26",
+          "snippet": "IndustryLens tracks ten of them \u2014 Profound, AthenaHQ, Peec AI, Otterly.ai, Knowatoa, Scrunch AI, Brandlight, Goodie AI, plus the SEO-suite add-ons Ahrefs Brand Radar and Semrush AI Toolkit \u2014 comparing pricing, positioning and the shift from passive monitoring to agentic execution.",
+          "source": "web",
+          "title": "AI Search Visibility Tools 2026: 10 Compared & Priced - IndustryLens",
+          "url": "https://industry-lens.com/intelligence/ai-search"
+        },
+        {
+          "date": "2026-06-23",
+          "id": 12,
+          "last_updated": "2026-07-27",
+          "snippet": "|Use Case|Best Tool|\n...\n|Best AI Search Optimization Platform|LovedByAI|\n|Best for SEO Agencies|Profound|\n|Best Enterprise Platform|Scrunch AI|\n|Best for AI Share of Voice Tracking|Peec AI|\n|Best Budget AI Visibility Tool|Otterly|\n|Best for SEO Teams|Ahrefs Brand Radar|\n|Best for Existing Semrush Users|Semrush AI Toolkit|\n|Best for Ecommerce Brands|Yotpo|\n|Best for Competitive Monitoring|Similarweb|\n...\n|Tool|Primary Category|AI Engines Covered|Citation Tracking|AI Mentions Tracking|Share of Voice Analysis|Competitor Tracking|AI Traffic Tracking|GEO Optimization Features|WordPress Native|Pricing (Starting)|Best For|\n...\n|Use Case|Recommended Tool|Why It Stands Out|",
+          "source": "web",
+          "title": "18 Best AI Search Visibility Tools & GEO Platforms in 2026",
+          "url": "https://www.lovedby.ai/blog/ai-search-visibility-tools"
+        },
+        {
+          "date": "2026-08-21",
+          "id": 13,
+          "last_updated": "2026-08-26",
+          "snippet": "- **AIclicks.io**- best overall for tracking and optimizing AI search visibility\n- **CrowdReply**- best for combining AI visibility tracking with social engagement and backlink building",
+          "source": "web",
+          "title": "19 Best AI Search Visibility Optimization Tools in 2026",
+          "url": "https://aiclicks.io/blog/best-ai-optimization-tools"
+        },
+        {
+          "id": 14,
+          "last_updated": "2026-08-26",
+          "snippet": "Use AI Rank Lab to monitor ChatGPT, Claude, and Perplexity visibility.\n...\nAI Brand Visibility Monitoring tracks how AI engines like ChatGPT, Claude, Gemini, and Perplexity mention your brand in their responses.\nWe run real prompts with web search enabled and analyze whether your brand is cited, what position it appears in, and the sentiment of the mention.",
+          "source": "web",
+          "title": "AI Brand Visibility Tracker: Monitor ChatGPT, Claude & ...",
+          "url": "https://www.airanklab.com/features/brand-visibility"
+        },
+        {
+          "date": "2026-06-09",
+          "id": 15,
+          "last_updated": "2026-08-29",
+          "snippet": "A deep-dive comparison of the top Generative Engine Optimization (GEO) tools in 2026 \u2014 what they do, who they're for, and why Dageno AI stands out as the most complete end-to-end platform for brands serious about AI search visibility.\n...\n## The Best GEO Tools Ranked: Full Comparison for 2026\n|Tool|Best For|Core Differentiator|Starting Price|\n|--|--|--|--|\n|**Dageno AI**|End-to-end GEO + AEO|Full workflow: monitor \u2192 strategy \u2192 content \u2192 attribution|Free tier available|\n|Profound|Enterprise AI visibility|Real user conversation data at scale|$99/mo|\n|Semrush AIO|SEO teams adding GEO|Cross-LLM competitive benchmarking|$120+/mo|\n|BrightEdge|Large enterprise entity optimization|Knowledge graph and entity-first approach|Custom|\n|Writesonic|High-volume content production|Fast AI content generation|$199/mo|\n|AthenaHQ|Automated on-page GEO|Schema and entity tagging automation|$295/mo|\n|Otterly AI|GEO beginners and small teams|Simple mention tracking, low barrier to entry|$39/mo|\n|Addlly AI|Agent-led citation growth|Real-time AI agent optimization workflows|Custom|\n|InLinks|Publishers and content networks|Internal semantic linking|Varies|\n|Gumshoe AI|Persona-driven GEO analytics|Human-like buyer journey modeling|Beta|",
+          "source": "web",
+          "title": "Best Generative Engine Optimization (GEO) Tools for AI Search in ...",
+          "url": "https://dageno.ai/blog/best-answer-engine-optimization-platforms"
+        }
+      ],
+      "type": "search_results"
+    },
+    {
+      "queries": [
+        "site:profound.ai AI visibility platform features brands",
+        "site:ahrefs.com Brand Radar AI mentions visibility",
+        "site:semrush.com AI Visibility Toolkit features"
+      ],
+      "results": [
+        {
+          "id": 16,
+          "last_updated": "2026-08-29",
+          "snippet": "See any brand\u2019s AI visibility instantly across 471M prompts.\n...\nBrand Radar measures AI visibility by running 471M+ search-backed prompts through AI platforms (AI Overviews, AI Mode, ChatGPT, Perplexity, Gemini, Copilot) and storing every response.\nYour visibility is then calculated from how often your brand is mentioned or cited in those responses, with these key metrics:\n- Mentions \u2013 how often your brand name appears in AI answer text\n- Citations \u2013 how often AI links to your pages or domains as a source\n- AI Share of Voice \u2013 the percentage of AI responses within your topic set that mention or cite your brand versus competitors\n- Estimated Impressions \u2013 potential visibility weighted by the real search volume behind each prompt",
+          "source": "web",
+          "title": "Ahrefs Brand Radar: See ANY brand's AI visibility",
+          "url": "https://ahrefs.com/brand-radar"
+        },
+        {
+          "date": "2026-07-13",
+          "id": 17,
+          "last_updated": "2026-08-23",
+          "snippet": "Brand Radar is Ahrefs' AI visibility tool that tracks how any brand shows up in AI search in over 405+ million search-backed prompts (modeled after real keywords from our database, asked by real humans).\n...\n- **Web Visibility** \u2014 Mentions of your brand across web pages with content",
+          "source": "web",
+          "title": "What is Brand Radar, and how to use it?",
+          "url": "https://help.ahrefs.com/en/articles/11064852-what-is-brand-radar-and-how-to-use-it"
+        },
+        {
+          "date": "2026-06-26",
+          "id": 18,
+          "last_updated": "2026-08-17",
+          "snippet": "# AI Visibility in Brand Radar is measured in Mentions, Citations, Impressions and AI Share of Voice\nThese metrics for any brand can be seen on the **Brand Radar Overview** and **AI responses** reports, and can also be pulled via API\n...\nA single mention is counted when a brand appears at least once in an AI generated response.\n...\nYou can hover over each brand and click on the blue numbers to quickly filter for AI responses that mention you and/or your competitors:",
+          "source": "web",
+          "title": "AI Visibility Metrics - Brand Radar",
+          "url": "https://help.ahrefs.com/en/articles/15501968-ai-visibility-metrics"
+        },
+        {
+          "id": 19,
+          "last_updated": "2026-08-29",
+          "snippet": "AI visibility tracks how often and how prominently AI platforms mention your brand in their responses.",
+          "source": "web",
+          "title": "Free AI Visibility Checker. Track Your Brand in ChatGPT, ...",
+          "url": "https://ahrefs.com/ai-visibility-checker"
+        },
+        {
+          "date": "2025-02-28",
+          "id": 20,
+          "last_updated": "2026-08-18",
+          "snippet": "The toolkit gives you access to specialized reports and metrics for analysis, brand management, and monitoring.\n- **Visibility Overview:** Get a benchmark of any brand's overall presence in AI search with the AI Visibility Score.\nYou can analyze this data on a Worldwide scale or drill down into specific available regions.\nSee where your brand appears in AI-generated answers, spot competitor activity, and identify opportunities for growth.\n- **Competitor Research:** See how AI platforms position your competitors compared to your brand.\nUse this report to uncover visibility gaps and identify the prompts and topics where others are getting cited but you aren't.\n- **Prompt Research:** Discover and prioritize AI search topics to target.\nThink of it as keyword research for AI\u2014you can see topic-level volume, difficulty, and user intent to find new opportunities.\n- **Brand Performance:** Understand how AI platforms perceive your brand against competitors.\nThis suite of reports analyzes your Share of Voice, brand sentiment, and the key narratives driving your reputation to provide AI-generated strategic recommendations.\n- **Prompt Tracking:** Monitor your visibility for specific, high-value prompts on platforms like Google AI Mode and ChatGPT.\nYou can track your presence day-by-day to measure the results of your optimizations and act quickly on any sudden drops.\n- **AI Search Site Audit:** Check your website for technical issues that might prevent AI bots from crawling your content.",
+          "source": "web",
+          "title": "AI Visibility Toolkit: Boost Brand Visibility in AI Search",
+          "url": "https://www.semrush.com/kb/1493-ai-visibility-toolkit"
+        },
+        {
+          "id": 21,
+          "last_updated": "2026-06-05",
+          "snippet": "Track and grow your brand\u2019s visibility across AI answers, YouTube, and Reddit.\n...\nPowered by search-backed prompts, not synthetic ones.\n...\n### Track your brand mentions across AI answers and see how often you show up in the conversations that matter.\n...\n### Find valuable AI citations and secure new mentions to boost your visibility in LLM answers.",
+          "source": "web",
+          "title": "Brand Radar by Ahrefs - Optimize your brand's visibility in AI ...",
+          "url": "https://ahrefs.com/brand-radar?amp&amp&amp"
+        },
+        {
+          "date": "2025-03-04",
+          "id": 22,
+          "last_updated": "2026-08-26",
+          "snippet": "Enter your domain in the Visibility Overview report to see your **AI Visibility Score** (a benchmark from 0-100) and track your growth through three strategic trend lenses: **Main Metrics** (Mentions, Cited Pages, and Citations), **Monthly Audience**, and **AI Visibility**.",
+          "source": "web",
+          "title": "Getting Started with the AI Visibility Toolkit",
+          "url": "https://www.semrush.com/kb/1496-getting-started-with-ai-visibility-toolkit"
+        },
+        {
+          "date": "2025-12-12",
+          "id": 23,
+          "last_updated": "2026-08-29",
+          "snippet": "- **YouTube mentions ** show the strongest correlation with AI visibility (~0.737), outperforming every other factor across ChatGPT, AI Mode, and AI Overviews.",
+          "source": "web",
+          "title": "Top Brand Visibility Factors in ChatGPT, AI Mode, and AI ...",
+          "url": "https://ahrefs.com/blog/ai-brand-visibility-correlations/"
+        },
+        {
+          "date": "2026-02-26",
+          "id": 24,
+          "last_updated": "2026-08-29",
+          "snippet": "Brand Radar helps companies understand how their brand shows up across AI and search.\nIt calculates AI Share of Voice (SOV) based on how often brands are mentioned or cited in responses from ChatGPT, Perplexity, Gemini, Microsoft Copilot, and Google\u2019s AI Overviews and AI Mode.",
+          "source": "web",
+          "title": "Ahrefs Brand Radar Methodology: How we collect and ...",
+          "url": "https://ahrefs.com/blog/brand-radar-methodology/"
+        },
+        {
+          "id": 25,
+          "last_updated": "2026-08-26",
+          "snippet": "Use it to check at a glance your brand's: AI visibility (# of brand mentions), AI Share of Voice (SOV) against competitors, and niche.\n...\n- Mentions - show how many AI responses include your brand\n- Citations - show many AI responses cite your brand\n- Impressions - show the potential exposure by weighing mentions against Google\u2019s search volume\n- AI Share of Voice - shows the % of brand impressions you own when compared to competitors.\nYou can check all these metrics across 6+ AI platforms, like AI Overviews, ChatGPT, and Perplexity to name a few.\nAcross 150+ million monthly prompts.\n...\nBrand Radar tracks not just where you appear in AI responses, but also the underlying drivers that get you there: search demand, web visibility, and video visibility.",
+          "source": "web",
+          "title": "Overview",
+          "url": "https://ahrefs.com/academy/how-to-use-brand-radar/overview"
+        },
+        {
+          "id": 26,
+          "last_updated": "2026-08-26",
+          "snippet": "AI Visibility Score is Semrush's proprietary metric that measures how often your brand appears in AI answers, automatically benchmarked against your competitor median.",
+          "source": "web",
+          "title": "Get recommended by AI",
+          "url": "https://www.semrush.com/solutions/ai-visibility/"
+        },
+        {
+          "date": "2025-05-26",
+          "id": 27,
+          "last_updated": "2026-08-26",
+          "snippet": "1. Go to Ahrefs Brand Radar\n2. Hit the \u201cGoogle AI Overviews\u201d tab and search for your brand name\n3. Select \"keyword OR AI Overview\" from the dropdown\n4. This will show your total AI Overview ownership, and any growth or decline over time\n...\n1. Go to Ahrefs Brand Radar\n2. Hit the \u201cWeb visibility\u201d tab and search for your brand name\n3. Select the \u201cTotal\u201d tab\n4. Monitor growth or decline in web mentions over time",
+          "source": "web",
+          "title": "An Analysis of AI Overview Brand Visibility Factors (75K ...",
+          "url": "https://ahrefs.com/blog/ai-overview-brand-correlation/"
+        },
+        {
+          "id": 28,
+          "last_updated": "2026-08-26",
+          "snippet": "See how AI platforms position your competitors versus your brand.\nAI Brand Performance\nTrack how AI describes and positions your brand.\nPosition Tracker\nMonitor your rankings on AI platforms.",
+          "source": "web",
+          "title": "Semrush AI Visibility Toolkit Onboarding",
+          "url": "https://www.semrush.com/academy/onboarding/ai-visibility-toolkit/"
+        },
+        {
+          "date": "2026-03-11",
+          "id": 29,
+          "last_updated": "2026-08-25",
+          "snippet": "Visibility Overview provides an instant high-level assessment of any brand\u2019s AI visibility across LLMs (ChatGPT, Gemini, Google AI Mode) and Google\u2019s AI Overviews.\n...\nBrand Performance offers a set of reports within the AI Visibility Toolkit allowing you to track your brand\u2019s share of voice and sentiment across several AI platforms.",
+          "source": "web",
+          "title": "Semrush Features for AI Visibility",
+          "url": "https://www.semrush.com/kb/1626-ai-visibility-features"
+        },
+        {
+          "date": "2025-12-19",
+          "id": 30,
+          "last_updated": "2026-08-28",
+          "snippet": "Teams can now track brand mentions across videos and Reddit visibility in Google Search \u2013 key surfaces influencing discovery and decision-making.\n...\nThis infrastructure processes over 239M prompts every month, giving Brand Radar the ability to index, compare, and monitor brand visibility across fast-moving surfaces.\nIt currently includes:\n- 162M+ AI Overviews\n- 29M+ AI Mode queries\n- 100M+ of queries across ChatGPT, Copilot, Gemini, and Perplexity\n...\n**YouTube + TikTok (Beta)** Brand Radar now scans video descriptions, transcripts, and titles for mentions, surfacing only snippets with brand mentions, instead of full transcripts.\nTeams can quickly see which videos reference their brand and understand the context those mentions appear in.\n**Reddit in SERPs (Beta)** Tracks where brands appear in Reddit results shown in Google Search, including titles, descriptions, and subreddit snippets.",
+          "source": "web",
+          "title": "Ahrefs Adds YouTube and Reddit Tracking to Brand Radar",
+          "url": "https://ahrefs.com/blog/product-announcement-ahrefs-adds-youtube-and-reddit-tracking-to-brand-radar/"
+        }
+      ],
+      "type": "search_results"
+    },
+    {
+      "queries": [
+        "Profound AI visibility platform official pricing features 2026",
+        "Peec AI official AI visibility platform features pricing",
+        "Scrunch AI official AI search visibility platform pricing AthenaHQ Otterly AI"
+      ],
+      "results": [
+        {
+          "id": 31,
+          "last_updated": "2026-08-06",
+          "snippet": "The $99 Starter tier covers ChatGPT and nothing else: one surface, one seat, one region, one language, no exports.\nThree engines (ChatGPT, Perplexity and Google AI Overviews) start at $399, and reaching the full nine means Enterprise.\n...\n$99/month (Starter, billed yearly), ChatGPT only\n- **Median annual cost**\n$4,788/year at Growth ($399/mo), the first multi-engine tier\n...\nPrompt and credit ceilings are per tier\n...\nStarter: 50 prompts, 1,500 responses/mo, 1 engine, 1 seat\n...\nChatGPT only (Starter); +Perplexity, AI Overviews (Growth); up to 9 (Enterprise)\n- **Prompts tracked**",
+          "source": "web",
+          "title": "Profound Pricing and Features 2026 | Social Listening Platforms",
+          "url": "https://listeningplatforms.com/platforms/profound/"
+        },
+        {
+          "date": "2026-06-28",
+          "id": 32,
+          "last_updated": "2026-07-20",
+          "snippet": "|Feature|Starter $95/mo|Pro $245/mo|Advanced $495/mo|Enterprise Custom|",
+          "source": "web",
+          "title": "Peec AI Review (2026) - Marketraa",
+          "url": "https://www.marketraa.com/tools/peec-ai/"
+        },
+        {
+          "date": "2026-07-21",
+          "id": 33,
+          "last_updated": "2026-08-22",
+          "snippet": "Real multi-engine tracking starts at $399 a month, the $99 Starter tier watches ChatGPT and nothing else, and full coverage of all ten engines only comes with a custom Enterprise contract.\n...\n|Plan|Price (billed yearly)|AI engines|Prompts tracked|Seats|Support|\n...\n|Starter|$99/mo|ChatGPT only|50 prompts (1,500 responses/mo)|1| |\n|Growth|$399/mo|3 (ChatGPT, Perplexity, Google AI Overviews)|100 prompts (9,000 responses/mo)|3| |\n|Enterprise|Custom|Up to 10|Custom|Custom|Dedicated Slack, 24h SLA|",
+          "source": "web",
+          "title": "Profound Review (2026): Is the Enterprise AI Visibility Tool Worth It?",
+          "url": "https://dupple.com/learn/profound-review"
+        },
+        {
+          "date": "2026-01-07",
+          "id": 34,
+          "last_updated": "2026-08-25",
+          "snippet": "Pricing starts at $499/month for the Lite tier (3 seats, unlimited domains, 24K responses analyzed monthly), with Enterprise contracts typically running $2,000+/month.\n...\n- **Lite (Standard):** $499/month \u2014 3 seats, unlimited domains tracked, 24,000 responses analyzed monthly, 200 unique prompts daily, 2 months historical data, CSV/JSON exports, email support\n- **Enterprise:** custom pricing \u2014 adds API access, custom seats, dedicated AEO strategist, dedicated Slack support with 24-hour SLA, all-time historical data.\nThird-party sources put real Enterprise contracts in the $2,000+/month range.",
+          "source": "web",
+          "title": "Profound AI Review 2026: Worth It for Agencies?",
+          "url": "https://arvow.com/blog/profound-ai-review"
+        },
+        {
+          "date": "2026-06-05",
+          "id": 35,
+          "last_updated": "2026-08-28",
+          "snippet": "Starter is **$99/month ** (ChatGPT only, 50 prompts), Growth is **$399/month ** (3 engines, 100 prompts, plus 6 AEO articles), and full 10-engine coverage is custom ** Enterprise **.\n...\nThree brand tiers: Starter at $99/month, Growth at $399/month, and custom Enterprise.\nAnnual billing takes off two months, so Starter drops to $82.50/month and Growth to $332.50/month.",
+          "source": "web",
+          "title": "Profound Review: Enterprise AI Search Visibility (2026) | TMB",
+          "url": "https://thatmarketingbuddy.com/software/profound"
+        },
+        {
+          "date": "2026-07-15",
+          "id": 36,
+          "last_updated": "2026-08-26",
+          "snippet": "|4|Profound|Enterprises that prioritize answer-engine intelligence, depth, and governance|Starter covers ChatGPT; Growth expands to three engines; Enterprise is tailored|Analytics plus broader enterprise agents/workflows|$99/month Starter or $399/month Growth, billed yearly; Enterprise custom|Cost and procurement complexity can exceed a small team\u2019s needs|",
+          "source": "web",
+          "title": "Peec AI Review 2026: Pricing, Limits & Top Alternatives (Hands-On)",
+          "url": "https://maxaeo.ai/blog/peec-ai-review-2026-best-for-ai-visibility-monitoring-use-cases-limits-alternatives/"
+        },
+        {
+          "date": "2026-08-24",
+          "id": 37,
+          "last_updated": "2026-08-26",
+          "snippet": "Unlimited projects\nCustom prompt setup\nAPI access\n...\nUp to 11 LLM models tracked",
+          "source": "web",
+          "title": "Pricing for Peec AI - AI Search Analytics for Marketing teams and ...",
+          "url": "https://peec.ai/pricing"
+        },
+        {
+          "id": 38,
+          "last_updated": "2026-08-26",
+          "snippet": "- ChatGPT tracking only\n- 50 prompts tracked\n- 100 Agents credits/month\n- Email support\n...\n- 3 Answer Engines tracked\n- 100 prompts tracked\n- 400 Agents credits/month\n...\n- Up to 9 Answer Engines tracked\n- Multiple companies tracked\n- Tailored prompt tracking plan\n- Dedicated Slack support\n- SSO/SAML + SOC2 compliance\n...\n- 9,000 responses monthly",
+          "source": "web",
+          "title": "Pricing - Profound",
+          "url": "https://www.tryprofound.com/pricing"
+        },
+        {
+          "date": "2026-08-01",
+          "id": 39,
+          "last_updated": "2026-08-26",
+          "snippet": "|Plan|Price and commitment|Usage units|Coverage|Gates|\n...\n|Starter|$99/mo equivalent$1,188 annual cash|1 brand1 project50 prompts1,500 responses100 credits1 seat|1 engine: ChatGPT|API: API is listed on Enterprise MCP: Not publicly stated SSO: Higher plan: SSO/SAML is listed on Enterprise Agency: Higher plan: Agency packaging is listed on Enterprise|\n|Growth|$399/mo equivalent$4,788 annual cash|100 prompts9,000 responses400 credits3 seats|3 engines: ChatGPT, Perplexity, Google AI Overviews|API: API is listed on Enterprise MCP: Not publicly stated SSO: Higher plan: SSO/SAML is listed on Enterprise Agency: Higher plan|\n|Enterprise|Custom quoteNo public amount or minimum commitment|Tailored prompt allowance|9 engines: Up to nine answer engines, selections depend on the contract|API: Included MCP: Not publicly stated SSO: Included Agency: Listed for large companies and agencies|",
+          "source": "web",
+          "title": "Profound Pricing 2026: $99 to $399/mo Plans and Limits | Trakkr",
+          "url": "https://trakkr.ai/reviews/profound-review/pricing"
+        },
+        {
+          "date": "2026-07-19",
+          "id": 40,
+          "last_updated": "2026-08-23",
+          "snippet": "|Plan|Price|Prompts|Models|Projects|Notable|\n...\n|**Starter**|$95/mo|50|choose 3|1|daily tracking, unlimited users|\n|**Pro**|$245/mo|150|choose 3|2|3 countries/project|\n|**Advanced**|$495/mo|350|choose 3|5|multi-country, **Looker Studio**|\n|**Enterprise**|Custom|custom|up to 11|unlimited|API, SSO, MCP, dedicated support|",
+          "source": "web",
+          "title": "Peec AI Review (2026): Features, Pricing, Pros & Cons - FixAEO",
+          "url": "https://fixaeo.com/blogs/peec-ai-review/"
+        },
+        {
+          "date": "2026-05-12",
+          "id": 41,
+          "last_updated": "2026-08-26",
+          "snippet": "The **Starter plan costs $82.50/month** when billed annually and includes **ChatGPT tracking with 50 prompts**.\nThe **Growth plan costs $332.50/month** when billed annually and **includes 100 prompts** across three answer engines.\n...\nProfound AI pricing starts at $82.50/month for the Starter plan when billed annually.\n...\nMonthly pricing is commonly listed at $99/month for Starter and $399/month for Growth.",
+          "source": "web",
+          "title": "Profound AI Review 2026: Strong Data, But Here's the Real Catch",
+          "url": "https://www.scalenut.com/blogs/profound-ai-reviews"
+        },
+        {
+          "date": "2026-03-10",
+          "id": 42,
+          "last_updated": "2026-08-12",
+          "snippet": "**Starter** ($95/month).\n...\n**Pro** ($245/month).\n...\n**Advanced** ($495/month).\n...\n350 tracked prompts, choose 3 models, 5 projects, multi-country tracking (3 countries per project), unlimited users, daily tracking, Looker Studio integration, GSC/GA integration.",
+          "source": "web",
+          "title": "Peec AI Review (2026): Pricing, Features, and Is It Worth It?",
+          "url": "https://www.aipeekaboo.com/blog/peec-ai-review"
+        },
+        {
+          "date": "2026-08-18",
+          "id": 43,
+          "last_updated": "2026-08-27",
+          "snippet": "Profound Starter is $99/mo equivalent, $1,188/yr\nGrowth is $399/mo equivalent, $4,788/yr, and Enterprise is custom.\n...\nProfound costs $99-$399/mo billed annually; Enterprise custom.",
+          "source": "web",
+          "title": "Profound Review 2026: Features, Limits and Verdict",
+          "url": "https://trakkr.ai/reviews/profound-review"
+        },
+        {
+          "date": "2026-06-07",
+          "id": 44,
+          "last_updated": "2026-08-27",
+          "snippet": "> Peec is self-serve and transparent: plans are **$95 (Starter), $245 (Pro) and $495 (Advanced)** a month, with custom ** Enterprise ** for unlimited models and API access.",
+          "source": "web",
+          "title": "Peec AI Review: Mid-Market AI Search Visibility (2026) | TMB",
+          "url": "https://thatmarketingbuddy.com/software/peec-ai"
+        },
+        {
+          "date": "2026-07-19",
+          "id": 45,
+          "last_updated": "2026-08-16",
+          "snippet": "|Plan|Price|What you get|\n...\n|Starter|$99/mo|Public, self-serve.\nTracks ChatGPT only; 50 prompts, 1 seat, 100 agent credits.|\n|Growth|$399/mo|Public, self-serve with a free-trial CTA.\n3 answer engines (ChatGPT, Perplexity, AI Overviews); 100 prompts, 3 seats, 400 agent credits, CSV/JSON exports.\nNo API; ChatGPT Shopping is Enterprise-only.|\n|Enterprise|Custom|Sales-gated.\nFull engine roster, SSO/SAML, SOC 2, dedicated Slack.\nReal deployments reported in the thousands per month.|",
+          "source": "web",
+          "title": "Profound Alternatives In...",
+          "url": "https://meev.ai/reviews/profound"
+        }
+      ],
+      "type": "search_results"
+    },
+    {
+      "content": [
+        {
+          "annotations": [],
+          "text": "## Best AI search visibility tools for brands (August 2026)\n\nThe strongest choice depends on whether you need **broad measurement**, **enterprise monitoring**, **competitive share-of-voice data**, or **actionable optimization**.\n\n| Tool | Best for | Why consider it |\n|---|---|---|\n| **Ahrefs Brand Radar** | SEO teams and brands already using Ahrefs | Measures AI mentions, citations, estimated impressions, and AI Share of Voice across Google AI Overviews, AI Mode, ChatGPT, Perplexity, Gemini, and Copilot. It uses large volumes of search-backed prompts rather than only manually created prompts. [Ahrefs](https://ahrefs.com/brand-radar) |\n| **Semrush AI Visibility Toolkit** | Existing Semrush customers and integrated SEO workflows | Combines AI visibility scoring, competitor research, prompt research, brand sentiment, Share of Voice, prompt tracking, and an AI-search site audit. [Semrush](https://www.semrush.com/kb/1493-ai-visibility-toolkit) |\n| **Profound** | Large brands, agencies, and enterprise intelligence teams | A specialist platform focused on answer-engine monitoring, prompt tracking, citations, competitor analysis, and enterprise reporting. Public pricing shows a $99/month ChatGPT-only tier, $399/month tier covering three engines, and custom enterprise coverage. [Profound pricing](https://www.tryprofound.com/pricing) |\n| **Peec AI** | Mid-market marketing teams wanting transparent pricing | Focuses on AI search analytics, visibility trends, competitor comparisons, and multi-model tracking. Its pricing page advertises tracking for up to 11 LLM models, with API access available on higher-level plans. [Peec AI](https://peec.ai/pricing) |\n| **Scrunch AI** | Enterprise GEO and optimization infrastructure | A good fit when monitoring needs to connect with structured brand/entity data, technical optimization, and larger-scale workflows. It is generally positioned as an enterprise platform rather than a lightweight tracker. [IndustryLens comparison](https://industry-lens.com/intelligence/ai-search) |\n| **AthenaHQ** | Mid-market teams seeking automated on-page GEO improvements | Best suited to brands that want recommendations or automation around content, schema, entities, and technical changes\u2014not just reporting. [Rankability comparison](https://www.rankability.com/blog/best-ai-search-visibility-tracking-tools/) |\n| **Otterly AI** | Small teams and beginners | A lower-complexity way to track brand mentions and citations in AI answers. It is commonly positioned as a budget-friendly starter tool. [Rankability comparison](https://www.rankability.com/blog/best-ai-search-visibility-tracking-tools/) |\n| **Nightwatch** | Teams wanting traditional SEO plus AI monitoring | Combines LLM monitoring with conventional rank tracking, prompt research, citation-level sentiment analysis, and brand monitoring. [Nightwatch](https://nightwatch.io/blog/best-ai-search-monitoring-tools/) |\n\n### My practical recommendations\n\n- **Best overall for an SEO-led brand:** **Ahrefs Brand Radar**\n- **Best if your team already uses Semrush:** **Semrush AI Visibility Toolkit**\n- **Best enterprise specialist:** **Profound**\n- **Best mid-market analytics platform:** **Peec AI**\n- **Best for actually implementing GEO changes:** **AthenaHQ** or **Scrunch AI**\n- **Best low-cost starting point:** **Otterly AI**\n- **Best combined SEO and AI-search monitoring:** **Nightwatch**\n\n### What to evaluate before buying\n\n1. **Engines covered:** ChatGPT, Google AI Overviews/AI Mode, Perplexity, Gemini, Copilot, and Claude do not produce identical results.\n2. **Prompt methodology:** Prefer platforms using both your own high-value prompts and large, search-backed prompt datasets. Ahrefs, for example, says Brand Radar uses hundreds of millions of search-backed prompts. [Ahrefs](https://ahrefs.com/brand-radar)\n3. **Mentions versus citations:** A brand can be mentioned without receiving a clickable citation. Track both.\n4. **Share of Voice:** Make sure the tool compares you with competitors, not merely reporting raw mentions.\n5. **Geography and personalization:** Country, language, device, logged-in state, and search settings can materially change AI answers.\n6",
+          "type": "output_text"
+        }
+      ],
+      "id": "msg_cd44e4be-ca00-4a1b-acc7-de776df07718",
+      "role": "assistant",
+      "status": "completed",
+      "type": "message"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "presence_penalty": 0,
+  "previous_response_id": null,
+  "prompt_cache_key": null,
+  "reasoning": null,
+  "safety_identifier": null,
+  "service_tier": "default",
+  "status": "completed",
+  "store": true,
+  "temperature": 1,
+  "text": {
+    "format": {
+      "type": "text"
+    }
+  },
+  "tool_choice": "auto",
+  "tools": [
+    {
+      "type": "web_search"
+    }
+  ],
+  "top_logprobs": 0,
+  "top_p": 1,
+  "truncation": "",
+  "usage": {
+    "cost": {
+      "cache_creation_cost": 0.00183,
+      "cache_read_cost": 0.00016,
+      "currency": "USD",
+      "input_cost": 0.00018,
+      "output_cost": 0.00149,
+      "tool_calls_cost": 0.0075,
+      "tool_calls_cost_details": {
+        "search_web": 0.0075
+      },
+      "total_cost": 0.01116
+    },
+    "input_tokens": 16178,
+    "input_tokens_details": {
+      "cache_creation_input_tokens": 7330,
+      "cache_read_input_tokens": 7962,
+      "cached_tokens": 7962
+    },
+    "output_tokens": 1240,
+    "output_tokens_details": {
+      "reasoning_tokens": 73
+    },
+    "tool_calls_details": {
+      "search_web": {
+        "invocation": 3
+      }
+    },
+    "total_tokens": 17418
+  },
+  "user": null
+}

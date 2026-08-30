@@ -8,7 +8,11 @@ os.environ['APP_ENV'] = 'development'
 os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'analytics-test-secret'
 
-import server_pg as analytics  # noqa: E402
+import server_pg  # noqa: E402
+from app.crawler import fetch  # noqa: E402
+from app.engines import perplexity  # noqa: E402
+from app import recommendations  # noqa: E402
+from app.crawler import scoring  # noqa: E402
 
 
 class AnalyticsPipelineTests(unittest.TestCase):
@@ -21,12 +25,12 @@ class AnalyticsPipelineTests(unittest.TestCase):
         ):
             with self.subTest(url=url):
                 with self.assertRaises(ValueError):
-                    analytics.validate_public_web_url(url)
+                    fetch.validate_public_web_url(url)
 
     def test_crawl_urls_stay_on_site_and_drop_tracking_parameters(self):
         allowed_hosts = {'example.com'}
         self.assertEqual(
-            analytics.canonicalise_crawl_url(
+            fetch.canonicalise_crawl_url(
                 'https://example.com/start',
                 '/guide?utm_source=newsletter&topic=aeo#section',
                 allowed_hosts,
@@ -34,7 +38,7 @@ class AnalyticsPipelineTests(unittest.TestCase):
             'https://example.com/guide?topic=aeo',
         )
         self.assertIsNone(
-            analytics.canonicalise_crawl_url(
+            fetch.canonicalise_crawl_url(
                 'https://example.com/start',
                 'https://other.example/guide',
                 allowed_hosts,
@@ -42,7 +46,7 @@ class AnalyticsPipelineTests(unittest.TestCase):
         )
 
     def test_fetch_failures_do_not_become_measured_zero_scores(self):
-        scored = analytics.score_website_snapshot({
+        scored = scoring.score_website_snapshot({
             'fetched': False,
             'error': 'HTTP 503',
         })
@@ -79,14 +83,14 @@ class AnalyticsPipelineTests(unittest.TestCase):
             ],
         }
         self.assertEqual(
-            analytics.perplexity_answer_text(payload),
+            perplexity.perplexity_answer_text(payload),
             'Example is present in the saved answer.',
         )
         self.assertEqual(
-            analytics.perplexity_answer_citations(payload)[0]['url'],
+            perplexity.perplexity_answer_citations(payload)[0]['url'],
             'https://example.com/evidence',
         )
-        sources = analytics.normalise_perplexity_sources({}, payload)
+        sources = perplexity.normalise_perplexity_sources({}, payload)
         self.assertEqual(
             {source['source_kind'] for source in sources},
             {'agent_search_result', 'answer_citation'},
@@ -115,11 +119,11 @@ class AnalyticsPipelineTests(unittest.TestCase):
             'OLLAMA_BASE_URL': 'http://127.0.0.1:11434/v1',
             'OLLAMA_MODEL': 'gpt-oss:20b',
         }, clear=False), patch.object(
-            analytics,
+            recommendations,
             'external_json_request',
             return_value=provider_payload,
         ):
-            actions = analytics.open_model_evidence_opportunities(project, evidence)
+            actions = recommendations.open_model_evidence_opportunities(project, evidence)
         self.assertEqual(actions[0]['evidence_refs'], 'answer:42')
 
         provider_payload['choices'][0]['message']['content'] = (
@@ -131,11 +135,11 @@ class AnalyticsPipelineTests(unittest.TestCase):
             'OLLAMA_BASE_URL': 'http://127.0.0.1:11434/v1',
             'OLLAMA_MODEL': 'gpt-oss:20b',
         }, clear=False), patch.object(
-            analytics,
+            recommendations,
             'external_json_request',
             return_value=provider_payload,
         ):
-            self.assertIsNone(analytics.open_model_evidence_opportunities(project, evidence))
+            self.assertIsNone(recommendations.open_model_evidence_opportunities(project, evidence))
 
 
 if __name__ == '__main__':

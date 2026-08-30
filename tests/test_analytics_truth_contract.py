@@ -11,7 +11,15 @@ os.environ['APP_ENV'] = 'development'
 os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'analytics-truth-contract-test-secret'
 
-import server_pg as analytics  # noqa: E402
+import server_pg  # noqa: E402
+from conftest import create_workspace  # noqa: E402
+from app import db  # noqa: E402
+from app.crawler import fetch  # noqa: E402
+from app import jobs  # noqa: E402
+from app import metrics  # noqa: E402
+from app import models  # noqa: E402
+from app import tenancy  # noqa: E402
+from app import scanning  # noqa: E402
 
 
 def utc_now():
@@ -20,23 +28,14 @@ def utc_now():
 
 class AnalyticsTruthContractTests(unittest.TestCase):
     def create_project(self, *, user_id, domain='example.com', brand_name='Example'):
-        now = utc_now()
-        with analytics.engine.begin() as conn:
-            return conn.execute(insert(analytics.analytics_projects).values(
-                user_id=user_id,
-                domain=domain,
-                website_url=f'https://{domain}/',
-                brand_name=brand_name,
-                industry='Software',
-                created_at=now,
-                updated_at=now,
-            )).inserted_primary_key[0]
+        return create_workspace(user_id=user_id, domain=domain, brand_name=brand_name,
+                                created_at=utc_now())
 
-    def create_scan(self, project_id, *, region='IN', competitors=None, prompt_count=1):
+    def create_scan(self, workspace_id, *, region='IN', competitors=None, prompt_count=1):
         now = utc_now()
-        with analytics.engine.begin() as conn:
-            return conn.execute(insert(analytics.analytics_prompt_scan_runs).values(
-                project_id=project_id,
+        with db.engine.begin() as conn:
+            return conn.execute(insert(models.analytics_prompt_scan_runs).values(
+                workspace_id=workspace_id,
                 job_id=None,
                 provider='Perplexity',
                 model='provider/model',
@@ -56,11 +55,12 @@ class AnalyticsTruthContractTests(unittest.TestCase):
             )).inserted_primary_key[0]
 
     def test_partial_provider_results_keep_unmeasured_fields_null(self):
-        project_id = self.create_project(user_id=91001)
-        scan_id = self.create_scan(project_id, prompt_count=2)
-        project = {'brand_name': 'Example', 'domain': 'example.com'}
+        workspace_id = self.create_project(user_id=91001)
+        scan_id = self.create_scan(workspace_id, prompt_count=2)
+        project = {'id': workspace_id, 'brand_name': 'Example',
+                   'domain': 'example.com', 'domains': ['example.com']}
 
-        analytics.persist_provider_answer(
+        scanning.persist_provider_answer(
             scan_id,
             {
                 'id': 91001,
@@ -81,7 +81,7 @@ class AnalyticsTruthContractTests(unittest.TestCase):
             ['Agent API: unavailable'],
             20,
         )
-        analytics.persist_provider_answer(
+        scanning.persist_provider_answer(
             scan_id,
             {
                 'id': 91002,
@@ -101,7 +101,7 @@ class AnalyticsTruthContractTests(unittest.TestCase):
             20,
         )
 
-        rows = {row['prompt_id']: row for row in analytics.provider_evidence_rows(scan_id)}
+        rows = {row['prompt_id']: row for row in metrics.provider_evidence_rows(scan_id)}
         search_only = rows[91001]
         self.assertEqual(search_only['status'], 'partial')
         self.assertIsNone(search_only['brand_mentioned'])
@@ -117,7 +117,7 @@ class AnalyticsTruthContractTests(unittest.TestCase):
         self.assertIsNone(answer_only['best_source_rank'])
 
     def test_comparison_cohort_tracks_prompts_competitors_and_region(self):
-        project_id = self.create_project(user_id=91002)
+        workspace_id = self.create_project(user_id=91002)
         common_competitors = [
             {'name': 'Acme', 'domain': 'acme.com'},
             {'name': 'Rival', 'domain': 'rival.com'},
@@ -130,10 +130,10 @@ class AnalyticsTruthContractTests(unittest.TestCase):
         ]
         scan_ids = []
         now = utc_now()
-        with analytics.engine.begin() as conn:
+        with db.engine.begin() as conn:
             for index, (region, competitors, prompt_text) in enumerate(run_specs, 1):
-                scan_id = conn.execute(insert(analytics.analytics_prompt_scan_runs).values(
-                    project_id=project_id,
+                scan_id = conn.execute(insert(models.analytics_prompt_scan_runs).values(
+                    workspace_id=workspace_id,
                     job_id=None,
                     provider='Perplexity',
                     model='provider/model',
@@ -152,7 +152,7 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                     completed_at=now,
                 )).inserted_primary_key[0]
                 scan_ids.append(scan_id)
-                conn.execute(insert(analytics.analytics_provider_answers).values(
+                conn.execute(insert(models.analytics_provider_answers).values(
                     scan_run_id=scan_id,
                     prompt_id=92000 + index,
                     prompt_text=prompt_text,
@@ -163,10 +163,6 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                     status='succeeded',
                     answer_text='Example is mentioned.',
                     raw_response='{}',
-                    brand_mentioned=True,
-                    brand_cited=False,
-                    source_present=False,
-                    best_source_rank=None,
                     latency_ms=10,
                     error=None,
                     created_at=now,
@@ -174,7 +170,7 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                 ))
 
         history = {
-            row['id']: row for row in analytics.latest_prompt_evidence(project_id)['history']
+            row['id']: row for row in metrics.latest_prompt_evidence(workspace_id)['history']
         }
         first = history[scan_ids[0]]['cohort_id']
         reordered = history[scan_ids[1]]['cohort_id']
@@ -186,13 +182,13 @@ class AnalyticsTruthContractTests(unittest.TestCase):
         self.assertNotEqual(first, different_prompt)
 
     def test_comparison_cohort_preserves_duplicate_prompt_multiplicity(self):
-        project_id = self.create_project(user_id=91004)
+        workspace_id = self.create_project(user_id=91004)
         now = utc_now()
         scan_ids = []
-        with analytics.engine.begin() as conn:
+        with db.engine.begin() as conn:
             for prompt_count in (1, 2):
-                scan_id = conn.execute(insert(analytics.analytics_prompt_scan_runs).values(
-                    project_id=project_id,
+                scan_id = conn.execute(insert(models.analytics_prompt_scan_runs).values(
+                    workspace_id=workspace_id,
                     job_id=None,
                     provider='Perplexity',
                     model='provider/model',
@@ -212,7 +208,7 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                 )).inserted_primary_key[0]
                 scan_ids.append(scan_id)
                 for prompt_index in range(prompt_count):
-                    conn.execute(insert(analytics.analytics_provider_answers).values(
+                    conn.execute(insert(models.analytics_provider_answers).values(
                         scan_run_id=scan_id,
                         prompt_id=93000 + prompt_count * 10 + prompt_index,
                         prompt_text='Which platform is best?',
@@ -223,18 +219,14 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                         status='succeeded',
                         answer_text='Example is mentioned.',
                         raw_response='{}',
-                        brand_mentioned=True,
-                        brand_cited=False,
-                        source_present=False,
-                        best_source_rank=None,
-                        latency_ms=10,
+                                        latency_ms=10,
                         error=None,
                         created_at=now,
                         completed_at=now,
                     ))
 
         history = {
-            row['id']: row for row in analytics.latest_prompt_evidence(project_id)['history']
+            row['id']: row for row in metrics.latest_prompt_evidence(workspace_id)['history']
         }
         self.assertNotEqual(
             history[scan_ids[0]]['cohort_id'],
@@ -242,18 +234,19 @@ class AnalyticsTruthContractTests(unittest.TestCase):
         )
 
     def test_prompt_scan_aggregates_only_saved_provider_evidence(self):
-        project_id = self.create_project(user_id=91003)
+        workspace_id = self.create_project(user_id=91003)
         now = utc_now()
-        with analytics.engine.begin() as conn:
-            conn.execute(insert(analytics.analytics_competitors).values(
-                project_id=project_id,
+        with db.engine.begin() as conn:
+            conn.execute(insert(models.competitors).values(
+                workspace_id=workspace_id,
                 name='Acme',
-                domain='acme.com',
+                domains=['acme.com'],
+                aliases=[],
                 created_at=now,
             ))
-            conn.execute(insert(analytics.analytics_tracked_prompts), [
+            conn.execute(insert(models.analytics_tracked_prompts), [
                 {
-                    'project_id': project_id,
+                    'workspace_id': workspace_id,
                     'topic_id': None,
                     'prompt': 'Compare Example with Acme for analytics',
                     'intent': 'Comparison',
@@ -262,7 +255,7 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                     'updated_at': now,
                 },
                 {
-                    'project_id': project_id,
+                    'workspace_id': workspace_id,
                     'topic_id': None,
                     'prompt': 'Which analytics platform is established?',
                     'intent': 'Discovery',
@@ -271,8 +264,8 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                     'updated_at': now,
                 },
             ])
-        project = analytics.project_for_user(project_id, 91003)
-        job_id = analytics.create_analytics_job(project, 91003, 'prompt_scan', provider='Perplexity')
+        project = tenancy.workspace_for_member(workspace_id, 91003)
+        job_id = jobs.create_analytics_job(project, 'prompt_scan', provider='Perplexity')
         search_payloads = [
             {
                 'id': 'search-1',
@@ -310,15 +303,15 @@ class AnalyticsTruthContractTests(unittest.TestCase):
             'HF_TOKEN': '',
             'OLLAMA_BASE_URL': '',
         }, clear=False), patch.object(
-            analytics, 'call_perplexity_search', side_effect=search_payloads,
+            scanning, 'call_perplexity_search', side_effect=search_payloads,
         ), patch.object(
-            analytics, 'call_perplexity_answer', side_effect=answer_payloads,
+            scanning, 'call_perplexity_answer', side_effect=answer_payloads,
         ):
-            analytics.run_prompt_scan_job(job_id)
+            scanning.run_prompt_scan_job(job_id)
 
-        with analytics.engine.connect() as conn:
-            scan = conn.execute(select(analytics.analytics_prompt_scan_runs).where(
-                analytics.analytics_prompt_scan_runs.c.job_id == job_id
+        with db.engine.connect() as conn:
+            scan = conn.execute(select(models.analytics_prompt_scan_runs).where(
+                models.analytics_prompt_scan_runs.c.job_id == job_id
             )).mappings().one()
         self.assertEqual(scan['status'], 'succeeded')
         self.assertEqual(scan['completed_count'], 2)
@@ -332,9 +325,9 @@ class AnalyticsTruthContractTests(unittest.TestCase):
             (2, 1, 6, '', ('93.184.216.34', 443)),
             (2, 1, 6, '', ('127.0.0.1', 443)),
         ]
-        with patch.object(analytics.socket, 'getaddrinfo', return_value=addresses):
+        with patch.object(fetch.socket, 'getaddrinfo', return_value=addresses):
             with self.assertRaisesRegex(ValueError, 'publicly routable'):
-                analytics.validate_public_web_url('https://example.com/')
+                fetch.validate_public_web_url('https://example.com/')
 
 
 if __name__ == '__main__':
