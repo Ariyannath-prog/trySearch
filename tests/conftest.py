@@ -83,17 +83,48 @@ def no_network(monkeypatch):
     CLAUDE.md forbids paid calls from tests, and SPRINT T3 asks for proof that the
     suite runs with no network at all. Enforcing it on every run is stronger than
     proving it once: a test that starts reaching the network fails immediately
-    rather than passing slowly and quietly costing money.
+    rather than passing slowly and quietly costing money. The local PostgreSQL
+    service used by CI is the one deliberate exception.
     """
-    def deny(*args, **kwargs):
+    def is_local_database(address):
+        if not isinstance(address, tuple) or not address:
+            return False
+        host = address[0]
+        return host in {'localhost', '127.0.0.1', '::1'}
+
+    def deny_socket_connect(*args, **kwargs):
+        address = args[1] if len(args) > 1 else kwargs.get('address')
+        if is_local_database(address):
+            return original_connect(*args, **kwargs)
         raise NetworkAccessDenied(
             'This test tried to open a network connection. Tests replay recorded '
             'fixtures from tests/fixtures/; re-record with scripts/record_fixture.py.'
         )
 
-    monkeypatch.setattr(socket.socket, 'connect', deny)
-    monkeypatch.setattr(socket.socket, 'connect_ex', deny)
-    monkeypatch.setattr(socket, 'create_connection', deny)
+    def deny_socket_connect_ex(*args, **kwargs):
+        address = args[1] if len(args) > 1 else kwargs.get('address')
+        if is_local_database(address):
+            return original_connect_ex(*args, **kwargs)
+        raise NetworkAccessDenied(
+            'This test tried to open a network connection. Tests replay recorded '
+            'fixtures from tests/fixtures/; re-record with scripts/record_fixture.py.'
+        )
+
+    def deny_create_connection(*args, **kwargs):
+        address = args[0] if args else kwargs.get('address')
+        if is_local_database(address):
+            return original_create_connection(*args, **kwargs)
+        raise NetworkAccessDenied(
+            'This test tried to open a network connection. Tests replay recorded '
+            'fixtures from tests/fixtures/; re-record with scripts/record_fixture.py.'
+        )
+
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+    original_create_connection = socket.create_connection
+    monkeypatch.setattr(socket.socket, 'connect', deny_socket_connect)
+    monkeypatch.setattr(socket.socket, 'connect_ex', deny_socket_connect_ex)
+    monkeypatch.setattr(socket, 'create_connection', deny_create_connection)
     yield
 
 
