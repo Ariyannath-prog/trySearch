@@ -237,7 +237,7 @@ def admin_contacts():
       </head>
       <body>
         <h1>Saved contact submissions</h1>
-        <p class='note'>This page reads directly from the database used by the app (Postgres or SQLite depending on configuration).</p>
+        <p class='note'>This page reads directly from the Supabase PostgreSQL database used by the app.</p>
         <p><a href='/'>Back to homepage</a></p>
         <div class='table-wrap'>
           <table>

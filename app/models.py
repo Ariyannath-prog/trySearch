@@ -20,12 +20,10 @@ from sqlalchemy import (
     text,
 )
 
-from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, JSON, Numeric
+from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, Numeric
 from sqlalchemy.dialects.postgresql import ARRAY
 
-# The spec calls for text[]. Postgres gets exactly that; SQLite, which every test
-# runs on, has no array type and gets JSON instead. Python sees a list either way.
-STRING_ARRAY = ARRAY(Text).with_variant(JSON, 'sqlite')
+STRING_ARRAY = ARRAY(Text)
 
 from app.db import metadata
 
@@ -114,8 +112,7 @@ workspaces = Table(
     Column('updated_at', DateTime, nullable=True),
     CheckConstraint("kind IN ('project', 'pitch')", name='ck_workspace_kind'),
     CheckConstraint("status IN ('active', 'soft_deleted')", name='ck_workspace_status'),
-    Index('ix_workspaces_org_active', 'org_id', sqlite_where=text("status = 'active'"),
-          postgresql_where=text("status = 'active'")),
+    Index('ix_workspaces_org_active', 'org_id', postgresql_where=text("status = 'active'")),
 )
 
 brand_aliases = Table(
@@ -534,8 +531,8 @@ extractions = Table(
     # "Exactly one current extraction per answer" is enforced here, by the database,
     # not by application code. A partial unique index is the only thing that holds
     # under concurrent re-extraction.
-    Index('uq_extractions_current_answer', 'answer_id', unique=True,
-          sqlite_where=text('is_current'), postgresql_where=text('is_current')),
+        Index('uq_extractions_current_answer', 'answer_id', unique=True,
+                    postgresql_where=text('is_current')),
 )
 
 mentions = Table(
@@ -559,7 +556,7 @@ metrics_daily = Table(
     Column('date', Date, nullable=False),
     # NULL means the blended row across engines. A real PRIMARY KEY cannot contain
     # NULL, so uniqueness is a functional index over COALESCE below - which behaves
-    # identically on Postgres and SQLite.
+    # PostgreSQL's functional index preserves uniqueness for NULL engine IDs.
     Column('engine_id', Integer, nullable=True),
     Column('visibility_score', Float, nullable=True),
     Column('mention_rate', Float, nullable=True),

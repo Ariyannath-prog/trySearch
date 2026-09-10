@@ -1,9 +1,8 @@
 """Test schema setup, recorded-fixture replay, and the no-network guard.
 
-Application code no longer creates tables — Alembic owns the schema as of T2. The
-tests run against in-memory SQLite, where replaying the migration chain for every
-session would be slow and would exercise Alembic rather than the code under test,
-so the schema is built straight from the models here.
+Application code no longer creates tables — Alembic owns the schema as of T2. Tests
+use a dedicated Supabase PostgreSQL database and build the schema straight from the
+models here so the fixture suite remains independent of migration ordering.
 
 This runs at import, not in a fixture, and that ordering matters: pytest imports
 conftest before the test modules, and each test module calls `import server_pg` at
@@ -21,9 +20,11 @@ import pytest
 
 os.environ.setdefault('APP_ENV', 'development')
 os.environ.setdefault('SECRET_KEY', 'test-secret')
-# Bind the engine to in-memory SQLite before anything imports app.db. The test
-# modules set this to the same value; whichever runs first wins and they agree.
-os.environ['DATABASE_URL'] = 'sqlite://'
+# Never point this at a production project.
+test_database_url = os.environ.get('TEST_DATABASE_URL')
+if not test_database_url:
+    raise RuntimeError('Set TEST_DATABASE_URL to a dedicated Supabase PostgreSQL database before running tests.')
+os.environ['DATABASE_URL'] = test_database_url
 
 from app import models  # noqa: E402,F401 - registers the tables on `metadata`
 from app.db import engine, metadata  # noqa: E402

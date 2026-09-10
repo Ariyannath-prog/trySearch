@@ -3,10 +3,9 @@
 import os
 
 # The repo root, not app/. The page routes serve index.html, analytics.html and the
-# rest of the static frontend from here, and SQLITE_PATH resolves against it, so this
-# has to stay one level above this package.
+# rest of the static frontend from here, so this has to stay one level above this
+# package.
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir))
-SQLITE_PATH = os.path.join(BASE_DIR, 'searchable.db')
 
 APP_ENV = os.environ.get('APP_ENV', 'development').lower()
 IS_PRODUCTION = APP_ENV == 'production'

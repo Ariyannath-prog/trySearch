@@ -9,7 +9,6 @@ import unittest
 from datetime import date, datetime, timezone
 
 os.environ['APP_ENV'] = 'development'
-os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'visibility-score-test-secret'
 
 import server_pg  # noqa: E402,F401

@@ -6,7 +6,6 @@ import unittest
 from datetime import datetime
 
 os.environ['APP_ENV'] = 'development'
-os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'extraction-v2-test-secret'
 
 import server_pg  # noqa: E402,F401

@@ -7,7 +7,6 @@ from sqlalchemy import insert
 
 
 os.environ['APP_ENV'] = 'development'
-os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'analytics-live-metrics-test-secret'
 
 import server_pg  # noqa: E402
