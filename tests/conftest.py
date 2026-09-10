@@ -1,7 +1,7 @@
 """Test schema setup, recorded-fixture replay, and the no-network guard.
 
 Application code no longer creates tables — Alembic owns the schema as of T2. Tests
-use a dedicated Supabase PostgreSQL database and build the schema straight from the
+use a dedicated PostgreSQL database and build the schema straight from the
 models here so the fixture suite remains independent of migration ordering.
 
 This runs at import, not in a fixture, and that ordering matters: pytest imports
@@ -23,7 +23,7 @@ os.environ.setdefault('SECRET_KEY', 'test-secret')
 # Never point this at a production project.
 test_database_url = os.environ.get('TEST_DATABASE_URL')
 if not test_database_url:
-    raise RuntimeError('Set TEST_DATABASE_URL to a dedicated Supabase PostgreSQL database before running tests.')
+    raise RuntimeError('Set TEST_DATABASE_URL to a dedicated PostgreSQL database before running tests.')
 os.environ['DATABASE_URL'] = test_database_url
 
 from app import models  # noqa: E402,F401 - registers the tables on `metadata`

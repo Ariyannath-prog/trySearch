@@ -2,7 +2,7 @@
 
 T1 splits server_pg.py into the app/ module tree. That refactor is only safe if every
 route answers identically afterwards. This script drives the Flask test client over the
-whole url_map against a dedicated Supabase PostgreSQL test database and writes a
+whole url_map against a dedicated PostgreSQL test database and writes a
 normalised JSON snapshot.
 
     python scripts/route_snapshot.py before.json
@@ -21,7 +21,7 @@ import sys
 
 database_url = os.environ.get('TEST_DATABASE_URL')
 if not database_url:
-    raise RuntimeError('Set TEST_DATABASE_URL to a dedicated Supabase PostgreSQL database.')
+    raise RuntimeError('Set TEST_DATABASE_URL to a dedicated PostgreSQL database.')
 os.environ['DATABASE_URL'] = database_url
 os.environ['APP_ENV'] = 'development'
 os.environ.setdefault('SECRET_KEY', 'route-snapshot-fixed-key')

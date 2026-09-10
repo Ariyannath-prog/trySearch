@@ -26,9 +26,9 @@ if not database_url:
 
 DB_URL = normalize_database_url(database_url)
 if not DB_URL.startswith('postgresql'):
-    raise RuntimeError('DATABASE_URL must use PostgreSQL (Supabase), not SQLite.')
+    raise RuntimeError('DATABASE_URL must use a PostgreSQL connection URL.')
 
-# Keep a small, resilient connection pool for Supabase Postgres.
+# Keep a small, resilient connection pool for managed Postgres.
 engine_options = {
     'future': True,
     'pool_pre_ping': True,
