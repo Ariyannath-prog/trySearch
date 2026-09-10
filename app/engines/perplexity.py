@@ -129,3 +129,66 @@ def normalise_perplexity_sources(search_payload, answer_payload):
     for rank, item in enumerate(perplexity_answer_citations(answer_payload or {}), 1):
         add_source(item, 'answer_citation', rank)
     return sources
+
+
+# --- Adapter -----------------------------------------------------------------
+# The four functions above are wrapped, not rewritten. They work and they have
+# recorded fixtures; re-implementing them inside the adapter would throw that away.
+
+from decimal import Decimal  # noqa: E402
+
+from app.engines.base import Citation, EngineResult, guard  # noqa: E402
+
+
+class PerplexityAdapter:
+    """Perplexity Search + Agent, behind the EngineAdapter contract."""
+
+    key = 'perplexity'
+    source_type = 'api'
+    adapter_version = '2026.08.1'
+    supports_citations = True
+    supports_regions = True
+
+    # PRD §6a: search + agent, per answer.
+    UNIT_COST = Decimal('0.012')
+
+    def estimate_cost(self, prompt):
+        return self.UNIT_COST
+
+    @guard
+    def run(self, prompt, *, region=None, timeout_s=60):
+        import time
+        started = time.monotonic()
+
+        search_payload = call_perplexity_search(prompt, region)
+        answer_payload = call_perplexity_answer(prompt)
+        latency_ms = round((time.monotonic() - started) * 1000)
+
+        answer_text = perplexity_answer_text(answer_payload or {})
+        sources = normalise_perplexity_sources(search_payload or {}, answer_payload or {})
+        citations = tuple(
+            Citation(position=source.get('rank') or index,
+                     url=source.get('url') or '',
+                     title=source.get('title') or '')
+            for index, source in enumerate(sources, start=1)
+            if source.get('url')
+        )
+
+        raw_response = {'search': search_payload, 'answer': answer_payload}
+        model_version = str((answer_payload or {}).get('model') or '')
+
+        if not answer_text:
+            # A completed call that returned no text is 'empty', not 'failed'. The
+            # difference matters: empty is a fact about the answer, failed is a
+            # fact about the transport.
+            return EngineResult(
+                status='empty', answer_text='', citations=citations,
+                raw_response=raw_response, model_version=model_version,
+                cost_usd=self.UNIT_COST, latency_ms=latency_ms,
+            )
+
+        return EngineResult(
+            status='ok', answer_text=answer_text, citations=citations,
+            raw_response=raw_response, model_version=model_version,
+            cost_usd=self.UNIT_COST, latency_ms=latency_ms,
+        )

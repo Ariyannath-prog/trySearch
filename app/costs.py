@@ -10,7 +10,7 @@ so the ledger stays a complete audit trail even before real invoices land. Re-re
 """
 
 import os
-from datetime import date, datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import func, insert, select
@@ -87,7 +87,8 @@ def record_usage(*, workspace_id, org_id, category, provider, units=1, cost_usd=
 
 def month_to_date_spend(org_id, *, today=None):
     """Total USD the org has spent since the first of the current month."""
-    today = today or date.today()
+    # UTC, to match the timestamps on the ledger rows being summed.
+    today = today or datetime.now(timezone.utc).date()
     start = today.replace(day=1)
     with engine.connect() as conn:
         total = conn.execute(

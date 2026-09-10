@@ -1,7 +1,7 @@
 """Google Search Console: OAuth, token vault, sync."""
 
 from flask import Blueprint
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from flask import Flask, jsonify, request, send_from_directory, abort, session, redirect
 from sqlalchemy import (
     create_engine,
@@ -337,7 +337,8 @@ def sync_search_console(workspace_id):
     if not property_url:
         return jsonify({'error': 'Choose a Search Console property first.'}), 409
     body = request.get_json(silent=True) or {}
-    end_day = date.today() - timedelta(days=3)
+    # UTC for consistency with every other date in the codebase.
+    end_day = datetime.now(timezone.utc).date() - timedelta(days=3)
     start_day = end_day - timedelta(days=27)
     try:
         requested_start = date.fromisoformat(body.get('start_date')) if body.get('start_date') else start_day

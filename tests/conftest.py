@@ -30,6 +30,31 @@ from app.db import engine, metadata  # noqa: E402
 
 metadata.create_all(engine)
 
+
+def _seed_engines():
+    """Mirror the T12 migration's seed.
+
+    The schema here is built from the models rather than by replaying migrations,
+    so the seeded rows that ship inside a migration have to be repeated. Without
+    this the engines table is empty and every scan correctly refuses to run.
+    """
+    from sqlalchemy import insert, select
+
+    from app.models import engines as engines_table
+
+    with engine.begin() as conn:
+        exists = conn.execute(
+            select(engines_table.c.id).where(engines_table.c.key == 'perplexity')
+        ).scalar_one_or_none()
+        if not exists:
+            conn.execute(insert(engines_table).values(
+                key='perplexity', display_name='Perplexity', source_type='api',
+                adapter_version='2026.08.1', enabled=True,
+            ))
+
+
+_seed_engines()
+
 FIXTURE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures')
 
 
@@ -46,6 +71,7 @@ def database_schema():
     database for every test that sorted after it.
     """
     metadata.create_all(engine)
+    _seed_engines()
     yield
 
 

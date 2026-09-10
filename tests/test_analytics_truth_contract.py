@@ -20,6 +20,8 @@ from app import metrics  # noqa: E402
 from app import models  # noqa: E402
 from app import tenancy  # noqa: E402
 from app import scanning  # noqa: E402
+from app.engines import perplexity as perplexity_engine  # noqa: E402
+from app.engines.base import Citation, EngineResult  # noqa: E402
 
 
 def utc_now():
@@ -69,15 +71,13 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                 'topic_name': 'Platforms',
             },
             project,
-            {
-                'id': 'search-only',
-                'results': [{
-                    'title': 'Example evidence',
-                    'url': 'https://example.com/evidence',
-                    'snippet': 'Saved ranked evidence.',
-                }],
-            },
-            None,
+            EngineResult(
+                status='empty',
+                answer_text='',
+                citations=(Citation(position=1, url='https://example.com/evidence',
+                                    title='Example evidence'),),
+                raw_response={'search': {'id': 'search-only'}, 'answer': None},
+            ),
             ['Agent API: unavailable'],
             20,
         )
@@ -90,13 +90,13 @@ class AnalyticsTruthContractTests(unittest.TestCase):
                 'topic_name': 'Platforms',
             },
             project,
-            None,
-            {
-                'id': 'answer-only',
-                'status': 'completed',
-                'model': 'provider/model',
-                'output_text': 'Example provides an evidence workflow.',
-            },
+            EngineResult(
+                status='ok',
+                answer_text='Example provides an evidence workflow.',
+                citations=(),
+                raw_response={'search': None, 'answer': {'id': 'answer-only'}},
+                model_version='provider/model',
+            ),
             ['Search API: unavailable'],
             20,
         )
@@ -110,7 +110,11 @@ class AnalyticsTruthContractTests(unittest.TestCase):
         self.assertEqual(search_only['best_source_rank'], 1)
 
         answer_only = rows[91002]
-        self.assertEqual(answer_only['status'], 'partial')
+        # T12: an engine that returns text but no citations returned a *complete*
+        # answer - an empty citation list is a fact about the source, not a partial
+        # result. The unmeasured-fields assertions below are the point of this test
+        # and are unchanged.
+        self.assertEqual(answer_only['status'], 'succeeded')
         self.assertTrue(answer_only['brand_mentioned'])
         self.assertFalse(answer_only['brand_cited'])
         self.assertIsNone(answer_only['source_present'])
@@ -303,9 +307,9 @@ class AnalyticsTruthContractTests(unittest.TestCase):
             'HF_TOKEN': '',
             'OLLAMA_BASE_URL': '',
         }, clear=False), patch.object(
-            scanning, 'call_perplexity_search', side_effect=search_payloads,
+            perplexity_engine, 'call_perplexity_search', side_effect=search_payloads,
         ), patch.object(
-            scanning, 'call_perplexity_answer', side_effect=answer_payloads,
+            perplexity_engine, 'call_perplexity_answer', side_effect=answer_payloads,
         ):
             scanning.run_prompt_scan_job(job_id)
 

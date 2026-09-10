@@ -1,0 +1,251 @@
+# Editorial and review domains, one registrable domain per line.
+#
+# SERVER-SIDE ONLY. This list never reaches an API response or a JS bundle - it is
+# the moat, and the reference implementation of this product carries ~25,000
+# curated domains for exactly this reason. Grow it weekly.
+#
+# Matching is exact on the registrable domain, or as a suffix after a dot. Never
+# substring: notreddit.com is not reddit.com.
+#
+# --- software review and comparison ---
+g2.com
+capterra.com
+getapp.com
+softwareadvice.com
+trustradius.com
+gartner.com
+forrester.com
+peerspot.com
+sourceforge.net
+slant.co
+alternativeto.net
+saasworthy.com
+crozdesk.com
+financesonline.com
+goodfirms.co
+# --- technology press ---
+techcrunch.com
+theverge.com
+wired.com
+arstechnica.com
+zdnet.com
+cnet.com
+engadget.com
+venturebeat.com
+thenextweb.com
+mashable.com
+gizmodo.com
+techradar.com
+tomshardware.com
+pcmag.com
+pcworld.com
+computerworld.com
+infoworld.com
+networkworld.com
+theregister.com
+siliconangle.com
+protocol.com
+axios.com
+theinformation.com
+businessinsider.com
+fastcompany.com
+inc.com
+entrepreneur.com
+forbes.com
+fortune.com
+bloomberg.com
+reuters.com
+wsj.com
+ft.com
+economist.com
+nytimes.com
+washingtonpost.com
+theguardian.com
+bbc.com
+cnbc.com
+# --- business and marketing press ---
+hbr.org
+mckinsey.com
+bain.com
+bcg.com
+deloitte.com
+pwc.com
+accenture.com
+kpmg.com
+marketingweek.com
+adweek.com
+adage.com
+campaignlive.com
+thedrum.com
+digiday.com
+marketingdive.com
+martechseries.com
+chiefmartec.com
+# --- SEO, content and search ---
+searchengineland.com
+searchenginejournal.com
+seroundtable.com
+moz.com
+ahrefs.com
+semrush.com
+backlinko.com
+neilpatel.com
+contentmarketinginstitute.com
+copyblogger.com
+hubspot.com
+sproutsocial.com
+buffer.com
+hootsuite.com
+later.com
+# --- developer and engineering media ---
+infoq.com
+dzone.com
+thenewstack.io
+devops.com
+sdtimes.com
+smashingmagazine.com
+css-tricks.com
+alistapart.com
+sitepoint.com
+tutsplus.com
+freecodecamp.org
+realpython.com
+pythonspeed.com
+martinfowler.com
+# --- SaaS, startup and VC ---
+saastr.com
+a16z.com
+sequoiacap.com
+firstround.com
+openviewpartners.com
+tomtunguz.com
+lennysnewsletter.com
+substack.com
+medium.com
+dev.to
+hashnode.com
+# --- productivity, PM and collaboration coverage ---
+zapier.com
+pcmag.co.uk
+lifehacker.com
+makeuseof.com
+howtogeek.com
+digitaltrends.com
+tomsguide.com
+zdnet.co.uk
+techrepublic.com
+# --- finance, fintech and payments press ---
+finextra.com
+americanbanker.com
+paymentsdive.com
+pymnts.com
+fintechfutures.com
+bankingdive.com
+thebanker.com
+tearsheet.co
+# --- HR, people and ops press ---
+hrdive.com
+shrm.org
+hrexecutive.com
+peoplemanagement.co.uk
+# --- ecommerce and retail press ---
+retaildive.com
+digitalcommerce360.com
+practicalecommerce.com
+modernretail.co
+# --- healthcare and legal verticals ---
+healthcareitnews.com
+fiercehealthcare.com
+mobihealthnews.com
+law.com
+abovethelaw.com
+legaltechnews.com
+# --- security ---
+darkreading.com
+bleepingcomputer.com
+krebsonsecurity.com
+securityweek.com
+scmagazine.com
+threatpost.com
+csoonline.com
+helpnetsecurity.com
+# --- data, AI and analytics ---
+towardsdatascience.com
+kdnuggets.com
+analyticsvidhya.com
+machinelearningmastery.com
+theaireport.ai
+aibusiness.com
+datanami.com
+# --- reference and encyclopaedic ---
+wikipedia.org
+britannica.com
+investopedia.com
+techtarget.com
+whatis.com
+webopedia.com
+# --- more software review and buyer-intent ---
+softwaresuggest.com
+selecthub.com
+comparecamp.com
+itcentralstation.com
+softwarereviews.com
+techjury.net
+cybernews.com
+expertinsights.com
+serchen.com
+featuredcustomers.com
+appsumo.com
+stackshare.io
+siftery.com
+discovercloud.com
+# --- regional and international tech press ---
+techinasia.com
+e27.co
+dealstreetasia.com
+kr-asia.com
+sifted.eu
+tech.eu
+eu-startups.com
+techcabal.com
+restofworld.org
+nikkei.com
+scmp.com
+livemint.com
+economictimes.indiatimes.com
+yourstory.com
+inc42.com
+entrackr.com
+moneycontrol.com
+# --- vertical trade press ---
+supplychaindive.com
+logisticsmgmt.com
+manufacturingdive.com
+constructiondive.com
+utilitydive.com
+educationdive.com
+edsurge.com
+insurancejournal.com
+propmodo.com
+hospitalitynet.org
+restaurantdive.com
+grocerydive.com
+cio.com
+ciodive.com
+informationweek.com
+itpro.com
+channelfutures.com
+crn.com
+# --- design and product ---
+uxdesign.cc
+nngroup.com
+interaction-design.org
+uxmatters.com
+mindtheproduct.com
+svpg.com
+producttalk.org
+reforge.com
+# --- customer support and CX ---
+cxtoday.com
+customerthink.com
+supportdriven.com

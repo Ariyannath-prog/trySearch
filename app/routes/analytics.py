@@ -25,7 +25,11 @@ from sqlalchemy import (
 
 from app.auth import analytics_user_id
 from app.db import engine
-from app.metrics import analytics_report
+from app.metrics import (
+    analytics_report,
+    citation_domain_rollup,
+    competitor_citation_gaps,
+)
 from app.models import memberships, analytics_answer_sources, analytics_audit_findings, analytics_audit_jobs, analytics_audit_pages, competitors, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_rag_chunks, analytics_rag_documents, analytics_rag_insights, analytics_scan_schedules, analytics_site_audits, analytics_sitemaps, analytics_topics, analytics_tracked_prompts, gsc_connections, gsc_properties, gsc_query_rows, gsc_sync_runs
 from app.tenancy import current_user_id, default_org_for_user, require_workspace, workspaces_for_user
 from app.utils import normalise_domain, normalise_website_url, row_to_dict, to_iso
@@ -156,3 +160,26 @@ def analytics_report_endpoint(workspace_id):
     if not report:
         return jsonify({'error': 'Workspace not found.'}), 404
     return jsonify(report)
+
+
+@analytics_bp.route('/api/analytics/projects/<int:workspace_id>/citations', methods=['GET'])
+def analytics_citations_endpoint(workspace_id):
+    """Most-cited domains, split own / competitor / third-party, plus the gaps.
+
+    The curated domain lists are never serialised here - only the category name
+    each stored citation already carries.
+    """
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+
+    with engine.connect() as conn:
+        rollup = citation_domain_rollup(workspace_id, conn)
+        gaps = competitor_citation_gaps(workspace_id, conn)
+
+    return jsonify({
+        'total_citations': rollup['total_citations'],
+        'domains': rollup['domains'],
+        # The actionable half: domains citing a rival that have never cited you.
+        'competitor_gaps': gaps,
+    })

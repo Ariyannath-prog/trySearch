@@ -44,6 +44,7 @@ def create_app():
     from app.routes.audit import audit_bp
     from app.routes.content import content_bp
     from app.routes.evidence import evidence_bp
+    from app.routes.onboarding import onboarding_bp
     from app.routes.pages import pages_bp
     from app.routes.prompts import prompts_bp
 
@@ -54,6 +55,7 @@ def create_app():
         audit_bp,
         content_bp,
         evidence_bp,
+        onboarding_bp,
         pages_bp,
         prompts_bp,
     ):

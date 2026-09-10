@@ -1,0 +1,281 @@
+{
+  "aliases": [
+    "Linear App",
+    "Linear Issue Tracker"
+  ],
+  "brand_name": "Linear",
+  "competitors": [
+    {
+      "aliases": [
+        "Atlassian Jira"
+      ],
+      "domains": [
+        "atlassian.com"
+      ],
+      "name": "Jira"
+    },
+    {
+      "aliases": [
+        "Asana Work Management"
+      ],
+      "domains": [
+        "asana.com"
+      ],
+      "name": "Asana"
+    },
+    {
+      "aliases": [
+        "Clubhouse IO"
+      ],
+      "domains": [
+        "shortcut.com"
+      ],
+      "name": "Shortcut"
+    },
+    {
+      "aliases": [],
+      "domains": [
+        "clickup.com"
+      ],
+      "name": "ClickUp"
+    },
+    {
+      "aliases": [
+        "GitHub Projects"
+      ],
+      "domains": [
+        "github.com"
+      ],
+      "name": "GitHub Issues"
+    },
+    {
+      "aliases": [],
+      "domains": [
+        "monday.com"
+      ],
+      "name": "Monday.com"
+    },
+    {
+      "aliases": [],
+      "domains": [
+        "trello.com"
+      ],
+      "name": "Trello"
+    },
+    {
+      "aliases": [],
+      "domains": [
+        "plane.so"
+      ],
+      "name": "Plane"
+    }
+  ],
+  "domains": [
+    "linear.app"
+  ],
+  "prompts": [
+    {
+      "category": "discovery",
+      "tags": [
+        "issue-tracking",
+        "startups"
+      ],
+      "text": "best issue tracking software for startups"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "project-management",
+        "engineering"
+      ],
+      "text": "fast project management tool for software teams"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "agile",
+        "sprint-planning"
+      ],
+      "text": "modern sprint planning software"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "roadmaps",
+        "product-management"
+      ],
+      "text": "product roadmap tool for tech companies"
+    },
+    {
+      "category": "comparison",
+      "tags": [
+        "jira",
+        "alternatives"
+      ],
+      "text": "lightweight alternative to jira"
+    },
+    {
+      "category": "comparison",
+      "tags": [
+        "linear",
+        "jira"
+      ],
+      "text": "linear vs jira for engineering teams"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "software-development",
+        "tools"
+      ],
+      "text": "best tools for software product development"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "features",
+        "issue-tracking"
+      ],
+      "text": "issue tracker with keyboard shortcuts"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "minimalist",
+        "developers"
+      ],
+      "text": "minimalist project tracker for developers"
+    },
+    {
+      "category": "purchase",
+      "tags": [
+        "pricing",
+        "linear"
+      ],
+      "text": "linear app pricing and plans"
+    },
+    {
+      "category": "purchase",
+      "tags": [
+        "migration",
+        "linear",
+        "jira"
+      ],
+      "text": "how to migrate from jira to linear"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "agile",
+        "planning"
+      ],
+      "text": "top agile planning software 2024"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "bug-tracking",
+        "performance"
+      ],
+      "text": "fastest bug tracking tool"
+    },
+    {
+      "category": "comparison",
+      "tags": [
+        "shortcut",
+        "linear"
+      ],
+      "text": "shortcut vs linear comparison"
+    },
+    {
+      "category": "brand",
+      "tags": [
+        "integrations",
+        "github",
+        "linear"
+      ],
+      "text": "linear app integrations with github"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "startups",
+        "project-management"
+      ],
+      "text": "project management software used by fast growing startups"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "async",
+        "planning"
+      ],
+      "text": "asynchronous product planning tools"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "cycles",
+        "planning"
+      ],
+      "text": "streamlined cycle planning software"
+    },
+    {
+      "category": "brand",
+      "tags": [
+        "reviews",
+        "linear"
+      ],
+      "text": "linear project management software reviews"
+    },
+    {
+      "category": "comparison",
+      "tags": [
+        "clickup",
+        "linear"
+      ],
+      "text": "clickup vs linear for software teams"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "backlog",
+        "sprints"
+      ],
+      "text": "software for managing backlogs and sprints"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "design",
+        "engineering"
+      ],
+      "text": "best design engineering collaboration tools"
+    },
+    {
+      "category": "purchase",
+      "tags": [
+        "download",
+        "desktop-app",
+        "linear"
+      ],
+      "text": "download linear app for mac"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "issue-tracking",
+        "minimalist"
+      ],
+      "text": "issue tracking without the bloat"
+    },
+    {
+      "category": "discovery",
+      "tags": [
+        "bug-tracker",
+        "performance"
+      ],
+      "text": "high performance bug tracker"
+    }
+  ]
+}

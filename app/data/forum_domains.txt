@@ -1,0 +1,13 @@
+# Forums and community Q&A. Server-side only.
+reddit.com
+quora.com
+ycombinator.com
+news.ycombinator.com
+discourse.org
+slashdot.org
+producthunt.com
+indiehackers.com
+trustpilot.com
+glassdoor.com
+sitejabber.com
+complaintsboard.com

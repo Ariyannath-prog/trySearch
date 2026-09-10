@@ -9,12 +9,13 @@ one requires recomputing history, which is possible only because answers are
 immutable.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import func, insert, select, update
 
 from app.db import engine
 from app.models import (
+    engines as engines_table,
     analytics_answer_sources,
     analytics_prompt_scan_runs,
     analytics_provider_answers,
@@ -32,6 +33,16 @@ WEIGHT_CITATION_RATE = 0.2
 # PRD §13: on-demand runs are excluded, because they happen while someone is
 # actively optimising and would bias the series upward.
 SCHEDULED_RUN_TYPE = 'scheduled'
+
+
+def utc_today():
+    """Today in UTC, never the local date.
+
+    Runs are stamped with datetime.utcnow(), so rolling up by date.today() puts a
+    scan on the wrong day - or loses it entirely - for anyone whose local date has
+    already rolled over. CLAUDE.md: timestamps are always UTC.
+    """
+    return datetime.now(timezone.utc).date()
 
 
 def visibility_score(mention_rate, position_score, citation_rate):
@@ -119,12 +130,12 @@ def blend(per_engine):
 def engine_id_for_provider(provider, conn):
     """Resolve a provider label to an engines.id.
 
-    T12 introduces the engines table and this becomes a lookup against it. Until
-    then there is exactly one engine, so every answer lands in the blended row and
-    no per-engine row is written. Returning None here rather than inventing an id
-    keeps T12 from having to rewrite history.
+    T12 made this a real lookup, so per-engine metrics_daily rows now appear with
+    no schema change - which was the point of keeping it a function.
     """
-    return None
+    return conn.execute(
+        select(engines_table.c.id).where(engines_table.c.display_name == provider)
+    ).scalar_one_or_none()
 
 
 def collect_counts(workspace_id, day, conn):
@@ -189,8 +200,14 @@ def upsert_row(workspace_id, day, engine_id, values, conn):
         ))
 
 
-def rollup_workspace_day(workspace_id, day):
-    """Recompute metrics_daily for one workspace and date. Idempotent."""
+def rollup_workspace_day(workspace_id, day=None):
+    """Recompute metrics_daily for one workspace and date. Idempotent.
+
+    Defaults to the UTC date, never the local one: a caller passing
+    date.today() from a machine already past local midnight would roll up an
+    empty day and blank the score.
+    """
+    day = day or utc_today()
     with engine.begin() as conn:
         by_provider = collect_counts(workspace_id, day, conn)
 

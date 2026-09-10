@@ -1,0 +1,26 @@
+# Developer reference and code hosting. Server-side only.
+github.com
+gitlab.com
+bitbucket.org
+stackoverflow.com
+stackexchange.com
+serverfault.com
+superuser.com
+npmjs.com
+pypi.org
+crates.io
+packagist.org
+rubygems.org
+maven.org
+docker.com
+hub.docker.com
+readthedocs.io
+readthedocs.org
+developer.mozilla.org
+w3schools.com
+geeksforgeeks.org
+codepen.io
+jsfiddle.net
+replit.com
+kaggle.com
+huggingface.co

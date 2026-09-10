@@ -23,6 +23,7 @@ from sqlalchemy import insert, select, update  # noqa: E402
 from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app import scanning, worker  # noqa: E402
+from app.engines import perplexity as perplexity_engine  # noqa: E402
 from app.db import engine  # noqa: E402
 from app.http_client import ProviderAPIError  # noqa: E402
 from app.models import (  # noqa: E402
@@ -110,7 +111,7 @@ class OnDemandScanTests(unittest.TestCase):
 
     def test_request_returns_job_id_without_running_the_scan(self):
         with patch.dict(os.environ, {'PERPLEXITY_API_KEY': 'test-key'}, clear=False), \
-             patch.object(scanning, 'call_perplexity_search') as search:
+             patch.object(perplexity_engine, 'call_perplexity_search') as search:
             with server_pg.app.test_client() as client:
                 self.login(client)
                 response = client.post(
@@ -128,8 +129,8 @@ class OnDemandScanTests(unittest.TestCase):
     def test_worker_completes_the_queued_job(self):
         with patch.dict(os.environ, {'PERPLEXITY_API_KEY': 'test-key',
                                      'PERPLEXITY_REQUEST_DELAY_SECONDS': '0'}, clear=False), \
-             patch.object(scanning, 'call_perplexity_search', side_effect=search_payload), \
-             patch.object(scanning, 'call_perplexity_answer', side_effect=answer_payload):
+             patch.object(perplexity_engine, 'call_perplexity_search', side_effect=search_payload), \
+             patch.object(perplexity_engine, 'call_perplexity_answer', side_effect=answer_payload):
             with server_pg.app.test_client() as client:
                 self.login(client)
                 job_id = enqueue_scan(client, self.workspace)
@@ -176,8 +177,8 @@ class BatchingTests(unittest.TestCase):
 
         with patch.dict(os.environ, {'PERPLEXITY_API_KEY': 'test-key',
                                      'PERPLEXITY_REQUEST_DELAY_SECONDS': '0'}, clear=False), \
-             patch.object(scanning, 'call_perplexity_search', side_effect=counting_search), \
-             patch.object(scanning, 'call_perplexity_answer', side_effect=answer_payload):
+             patch.object(perplexity_engine, 'call_perplexity_search', side_effect=counting_search), \
+             patch.object(perplexity_engine, 'call_perplexity_answer', side_effect=answer_payload):
             with server_pg.app.test_client() as client:
                 client.post('/api/login',
                             json={'username': 'worker_batching', 'password': PASSWORD})
@@ -217,8 +218,8 @@ class PartialResultTests(unittest.TestCase):
                                      'ANSWER_RETRY_ATTEMPTS': '2'}, clear=False), \
              patch.object(scanning, 'ANSWER_RETRY_ATTEMPTS', 2), \
              patch.object(scanning, 'retry_delay', lambda attempt: 0), \
-             patch.object(scanning, 'call_perplexity_search', side_effect=flaky_search), \
-             patch.object(scanning, 'call_perplexity_answer', side_effect=flaky_answer):
+             patch.object(perplexity_engine, 'call_perplexity_search', side_effect=flaky_search), \
+             patch.object(perplexity_engine, 'call_perplexity_answer', side_effect=flaky_answer):
             with server_pg.app.test_client() as client:
                 client.post('/api/login',
                             json={'username': 'worker_partial', 'password': PASSWORD})
@@ -274,8 +275,8 @@ class WorkerRecoveryTests(unittest.TestCase):
         # Run the scan, then simulate the worker dying after two answers by
         # deleting the rest and putting the job back into a stale 'running' lease.
         with patch.dict(os.environ, env, clear=False), \
-             patch.object(scanning, 'call_perplexity_search', side_effect=counting_search), \
-             patch.object(scanning, 'call_perplexity_answer', side_effect=answer_payload):
+             patch.object(perplexity_engine, 'call_perplexity_search', side_effect=counting_search), \
+             patch.object(perplexity_engine, 'call_perplexity_answer', side_effect=answer_payload):
             with server_pg.app.test_client() as client:
                 client.post('/api/login',
                             json={'username': 'worker_recovery', 'password': PASSWORD})
@@ -305,8 +306,8 @@ class WorkerRecoveryTests(unittest.TestCase):
 
         # The 45-minute stale lease must requeue it rather than lose it.
         with patch.dict(os.environ, env, clear=False), \
-             patch.object(scanning, 'call_perplexity_search', side_effect=counting_search), \
-             patch.object(scanning, 'call_perplexity_answer', side_effect=answer_payload):
+             patch.object(perplexity_engine, 'call_perplexity_search', side_effect=counting_search), \
+             patch.object(perplexity_engine, 'call_perplexity_answer', side_effect=answer_payload):
             worker.run_scheduled_analytics_command()
 
         with engine.connect() as conn:

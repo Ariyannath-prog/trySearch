@@ -1,0 +1,15 @@
+# Social platforms. Server-side only.
+linkedin.com
+twitter.com
+x.com
+facebook.com
+instagram.com
+tiktok.com
+youtube.com
+pinterest.com
+threads.net
+bsky.app
+mastodon.social
+snapchat.com
+tumblr.com
+vimeo.com

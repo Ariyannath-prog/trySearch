@@ -24,6 +24,7 @@ from sqlalchemy import insert, select, update  # noqa: E402
 from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app import costs, scanning  # noqa: E402
+from app.engines import perplexity as perplexity_engine  # noqa: E402
 from app.db import engine  # noqa: E402
 from app.http_client import ProviderAPIError  # noqa: E402
 from app.models import (  # noqa: E402
@@ -85,9 +86,9 @@ def run_scan(client, workspace_id, *, search=None, answer=None):
     env = {'PERPLEXITY_API_KEY': 'test-key', 'PERPLEXITY_REQUEST_DELAY_SECONDS': '0'}
     with patch.dict(os.environ, env, clear=False), \
          patch.object(scanning, 'retry_delay', lambda attempt: 0), \
-         patch.object(scanning, 'call_perplexity_search',
+         patch.object(perplexity_engine, 'call_perplexity_search',
                       side_effect=search or search_payload), \
-         patch.object(scanning, 'call_perplexity_answer',
+         patch.object(perplexity_engine, 'call_perplexity_answer',
                       side_effect=answer or answer_payload):
         body = client.post(f'/api/analytics/projects/{workspace_id}/prompt-scans',
                            json={}).get_json()
@@ -137,7 +138,11 @@ class LedgerRowTests(unittest.TestCase):
         # N=3 prompts, E=1 engine (Perplexity).
         self.assertEqual(len(engine_rows), 3, 'exactly N x E engine_query rows')
         self.assertEqual(len(extraction), 3, 'one extraction row per answer')
-        self.assertEqual(len(agent_rows), 3, 'the agent call is a separate provider call')
+        # T12: one adapter run is one engine query. Perplexity's search+agent pair
+        # is now an implementation detail behind the adapter boundary, not two
+        # separately billable categories - which makes N x E literal.
+        self.assertEqual(len(agent_rows), 0,
+                         'the adapter reports one engine query per prompt')
 
         for row in engine_rows:
             self.assertEqual(row['provider'], 'Perplexity')
@@ -235,8 +240,8 @@ class CeilingTests(unittest.TestCase):
             client.post('/api/login',
                         json={'username': self.username, 'password': PASSWORD})
             with patch.dict(os.environ, env, clear=False), \
-                 patch.object(scanning, 'call_perplexity_search', side_effect=counting_search), \
-                 patch.object(scanning, 'call_perplexity_answer', side_effect=answer_payload):
+                 patch.object(perplexity_engine, 'call_perplexity_search', side_effect=counting_search), \
+                 patch.object(perplexity_engine, 'call_perplexity_answer', side_effect=answer_payload):
                 response = client.post(
                     f'/api/analytics/projects/{self.workspace}/prompt-scans', json={})
 
@@ -263,8 +268,8 @@ class CeilingTests(unittest.TestCase):
 
         env = {'PERPLEXITY_API_KEY': 'test-key', 'PERPLEXITY_REQUEST_DELAY_SECONDS': '0'}
         with patch.dict(os.environ, env, clear=False), \
-             patch.object(scanning, 'call_perplexity_search', side_effect=counting_search), \
-             patch.object(scanning, 'call_perplexity_answer', side_effect=answer_payload):
+             patch.object(perplexity_engine, 'call_perplexity_search', side_effect=counting_search), \
+             patch.object(perplexity_engine, 'call_perplexity_answer', side_effect=answer_payload):
             scanning.run_prompt_scan_job(job_id)
 
         self.assertEqual(calls, [], 'the worker must refuse an over-ceiling job too')

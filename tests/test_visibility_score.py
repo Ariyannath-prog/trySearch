@@ -6,7 +6,7 @@ test_prd_worked_example is the anchor for the whole build. If it returns 44.4 or
 
 import os
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 os.environ['APP_ENV'] = 'development'
 os.environ['DATABASE_URL'] = 'sqlite://'
@@ -96,7 +96,7 @@ class WorkedExampleTests(unittest.TestCase):
         self.assertEqual(sum(1 for _m, _r, c in spec if c), 15)
 
         seed_answers(workspace_id, spec)
-        blended = rollup.rollup_workspace_day(workspace_id, date.today())
+        blended = rollup.rollup_workspace_day(workspace_id, rollup.utc_today())
         self.assertEqual(blended['answer_count'], 100)
         self.assertEqual(round(blended['visibility_score'], 1), 44.5)
 
@@ -150,30 +150,36 @@ class RollupBehaviourTests(unittest.TestCase):
                                         brand_name='OnDemand')
         # A perfect on-demand run, which must not count at all.
         seed_answers(workspace_id, [(True, 1, True)] * 10, run_type='on_demand')
-        blended = rollup.rollup_workspace_day(workspace_id, date.today())
+        blended = rollup.rollup_workspace_day(workspace_id, rollup.utc_today())
         self.assertIsNone(blended['visibility_score'],
                           'on-demand answers must not reach metrics_daily')
         self.assertEqual(blended['answer_count'], 0)
 
         # The same answers as a scheduled run do count.
         seed_answers(workspace_id, [(True, 1, True)] * 10, run_type='scheduled')
-        blended = rollup.rollup_workspace_day(workspace_id, date.today())
+        blended = rollup.rollup_workspace_day(workspace_id, rollup.utc_today())
         self.assertEqual(blended['answer_count'], 10)
         self.assertEqual(blended['visibility_score'], 100.0)
+
+    @staticmethod
+    def _row_count(workspace_id):
+        with engine.connect() as conn:
+            return len(conn.execute(select(metrics_daily).where(
+                metrics_daily.c.workspace_id == workspace_id)).mappings().all())
 
     def test_rollup_is_idempotent(self):
         workspace_id = create_workspace(user_id=95003, domain='idem.example',
                                         brand_name='Idem')
         seed_answers(workspace_id, [(True, 1, True), (False, None, False)])
 
-        first = rollup.rollup_workspace_day(workspace_id, date.today())
-        second = rollup.rollup_workspace_day(workspace_id, date.today())
+        first = rollup.rollup_workspace_day(workspace_id, rollup.utc_today())
+        after_one = self._row_count(workspace_id)
+        second = rollup.rollup_workspace_day(workspace_id, rollup.utc_today())
         self.assertEqual(first, second)
 
-        with engine.connect() as conn:
-            rows = conn.execute(select(metrics_daily).where(
-                metrics_daily.c.workspace_id == workspace_id)).mappings().all()
-        self.assertEqual(len(rows), 1,
+        # T12 seeded the engines table, so a day now yields a blended row *and* a
+        # per-engine row. Idempotency is that recomputing does not add more.
+        self.assertEqual(self._row_count(workspace_id), after_one,
                          'recomputing a date overwrites, never duplicates')
 
 
@@ -183,7 +189,7 @@ class ReadPathTests(unittest.TestCase):
         workspace_id = create_workspace(user_id=95004, domain='readpath.example',
                                         brand_name='ReadPath')
         seed_answers(workspace_id, [(True, 1, True)] * 3)
-        rollup.rollup_workspace_day(workspace_id, date.today())
+        rollup.rollup_workspace_day(workspace_id, rollup.utc_today())
 
         statements = []
         from sqlalchemy import event
@@ -209,7 +215,7 @@ class ReadPathTests(unittest.TestCase):
         workspace_id = create_workspace(user_id=95005, domain='report.example',
                                         brand_name='Report')
         seed_answers(workspace_id, [(True, 1, True)] * 2)
-        rollup.rollup_workspace_day(workspace_id, date.today())
+        rollup.rollup_workspace_day(workspace_id, rollup.utc_today())
 
         report = metrics.analytics_report(workspace_id, 95005)
         self.assertIn('site_health', report)
@@ -225,3 +231,35 @@ class ReadPathTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class UtcDayBoundaryTests(unittest.TestCase):
+    """The rollup buckets by UTC, never the local date.
+
+    Runs are stamped with datetime.utcnow(). Bucketing them with date.today() means
+    that between local midnight and UTC midnight the day's scans are looked up under
+    a date no run carries, collect_counts returns nothing, and metrics_daily records
+    zero answers - the dashboard silently blanks overnight and no test notices,
+    because CI runs in UTC where the two dates agree.
+    """
+
+    def test_rollup_day_defaults_to_utc_not_local(self):
+        from datetime import date as date_cls
+        self.assertEqual(rollup.utc_today(),
+                         datetime.now(timezone.utc).date())
+        # If this ever becomes the local date the bug is back.
+        self.assertIsInstance(rollup.utc_today(), date_cls)
+
+    def test_answers_are_found_on_the_utc_day_they_were_stamped(self):
+        workspace_id = create_workspace(user_id=95009, domain='utc.example',
+                                        brand_name='Utc')
+        stamped = datetime.utcnow()
+        seed_answers(workspace_id, [(True, 1, True)] * 4, when=stamped)
+
+        blended = rollup.rollup_workspace_day(workspace_id)
+        self.assertEqual(blended['answer_count'], 4,
+                         'the default day must match how runs are stamped')
+
+        # And the local date is only safe when it happens to agree with UTC.
+        on_utc_day = rollup.rollup_workspace_day(workspace_id, stamped.date())
+        self.assertEqual(on_utc_day['answer_count'], 4)

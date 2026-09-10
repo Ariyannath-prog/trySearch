@@ -404,6 +404,9 @@ analytics_provider_answers = Table(
     Column('prompt_intent', String(80), nullable=True),
     Column('topic_name', String(180), nullable=True),
     Column('provider', String(40), nullable=False),
+    # engine_id is the real identity; provider stays as a denormalised label so
+    # existing queries and stored evidence keep reading straightforwardly.
+    Column('engine_id', Integer, ForeignKey('engines.id'), nullable=True, index=True),
     Column('model', String(160), nullable=False),
     Column('status', String(32), nullable=False),
     Column('search_request_id', String(255), nullable=True),
@@ -569,4 +572,20 @@ metrics_daily = Table(
     Column('updated_at', DateTime, nullable=False),
     Index('uq_metrics_daily_key', 'workspace_id', 'date',
           text('coalesce(engine_id, -1)'), unique=True),
+)
+
+
+engines = Table(
+    'engines',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('key', Text, nullable=False, unique=True),
+    Column('display_name', Text, nullable=False),
+    # api | scraper | serp_vendor. The UI labels this so a grounded-search proxy
+    # is never presented as the engine it approximates.
+    Column('source_type', Text, nullable=False),
+    Column('adapter_version', Text, nullable=False),
+    Column('enabled', Boolean, nullable=False, default=True),
+    CheckConstraint("source_type IN ('api', 'scraper', 'serp_vendor')",
+                    name='ck_engines_source_type'),
 )

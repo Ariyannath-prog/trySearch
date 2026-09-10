@@ -16,6 +16,7 @@ from app.extraction.mentions import domain_matches, project_brand_aliases, text_
 from app.jobs import latest_site_audit
 from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts
 from app.rollup import latest_metrics, latest_metrics_all_engines
+from app.stats import describe_delta, score_envelope
 from app.tenancy import workspace_for_member
 from app.utils import row_to_dict
 
@@ -37,11 +38,18 @@ def analytics_report(workspace_id, user_id):
     per_engine = [row for row in latest_metrics_all_engines(workspace_id)
                   if row['engine_id'] is not None]
 
+    # Every metric leaves this function as {value, low, high, n} with an explicit
+    # state, never as a bare number. T11: the product's stated differentiator.
+    visibility = score_envelope(latest, has_completed_run=bool(series))
+    previous = series[1] if len(series) > 1 else None
+    visibility['delta'] = describe_delta(
+        visibility.get('visibility_score'),
+        {'value': previous['visibility_score']} if previous else None,
+    )
+
     return {
         'project': row_to_dict(project),
-        # None means "not yet run" - distinct from a zero score. T11 turns this into
-        # the three explicit empty states.
-        'visibility': row_to_dict(latest) if latest else None,
+        'visibility': visibility,
         'history': [row_to_dict(row) for row in reversed(series)],
         'engines': [row_to_dict(row) for row in per_engine],
         # Site health is a property of the website, not an engine result.
@@ -302,3 +310,98 @@ def latest_prompt_evidence(workspace_id, run_id=None):
             'measured_at': scan.get('completed_at') or scan.get('created_at'),
         },
     }
+
+
+def citation_domain_rollup(workspace_id, conn=None):
+    """Most-cited domains for a workspace, with counts, share and category.
+
+    One GROUP BY over analytics_answer_sources. No N+1: the category is already
+    stored on the row by extraction, so nothing is classified at read time.
+    """
+    query = (
+        select(
+            analytics_answer_sources.c.domain,
+            analytics_answer_sources.c.category,
+            func.count().label('citations'),
+        )
+        .select_from(analytics_answer_sources)
+        .join(analytics_provider_answers,
+              analytics_provider_answers.c.id == analytics_answer_sources.c.answer_id)
+        .join(analytics_prompt_scan_runs,
+              analytics_prompt_scan_runs.c.id
+              == analytics_provider_answers.c.scan_run_id)
+        .where(analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+        .group_by(analytics_answer_sources.c.domain,
+                  analytics_answer_sources.c.category)
+        .order_by(desc(func.count()))
+    )
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        rows = [dict(row) for row in conn.execute(query).mappings().all()]
+    finally:
+        if own_conn:
+            conn.close()
+
+    total = sum(row['citations'] for row in rows) or 0
+    for row in rows:
+        row['share'] = (row['citations'] / total) if total else None
+        # own / competitor / third-party is the split a client actually reads.
+        row['bucket'] = (
+            row['category'] if row['category'] in ('own', 'competitor')
+            else 'third_party'
+        )
+    return {'total_citations': total, 'domains': rows}
+
+
+def competitor_citation_gaps(workspace_id, conn=None, limit=25):
+    """Third-party domains that cite a competitor and never cite you.
+
+    The actionable output of the module: not "you lack citations" but "here is
+    where your rivals are cited and you are not".
+
+    One query. Each domain is counted against answers where the brand was
+    mentioned and answers where a competitor was mentioned, using the extraction
+    rows rather than re-deriving anything at read time.
+    """
+    brand_hits = func.sum(
+        case((extractions.c.brand_mentioned.is_(True), 1), else_=0)
+    ).label('brand_answers')
+    competitor_hits = func.count().label('total_answers')
+
+    query = (
+        select(
+            analytics_answer_sources.c.domain,
+            analytics_answer_sources.c.category,
+            brand_hits,
+            competitor_hits,
+        )
+        .select_from(analytics_answer_sources)
+        .join(analytics_provider_answers,
+              analytics_provider_answers.c.id == analytics_answer_sources.c.answer_id)
+        .join(analytics_prompt_scan_runs,
+              analytics_prompt_scan_runs.c.id
+              == analytics_provider_answers.c.scan_run_id)
+        .join(extractions,
+              (extractions.c.answer_id == analytics_provider_answers.c.id)
+              & extractions.c.is_current)
+        .where(
+            (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+            # Own and competitor domains are not gaps: one is already yours, the
+            # other you are never going to be cited on.
+            & (analytics_answer_sources.c.category.notin_(('own', 'competitor')))
+        )
+        .group_by(analytics_answer_sources.c.domain,
+                  analytics_answer_sources.c.category)
+        .having(brand_hits == 0)
+        .order_by(desc(func.count()))
+        .limit(limit)
+    )
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        rows = [dict(row) for row in conn.execute(query).mappings().all()]
+    finally:
+        if own_conn:
+            conn.close()
+    return rows

@@ -273,6 +273,50 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${provider} · ${model} · ${completed ?? 0}/${promptCount ?? 0} prompts${cohort ? ` · cohort ${cohort}` : ''} · ${suffix}`;
   }
 
+  // T11: no bare numbers. Every headline metric shows its 95% Wilson interval and
+  // its sample size without a hover, and a delta smaller than the interval reads as
+  // "no measurable change" rather than as an arrow.
+  const EMPTY_STATE_COPY = {
+    not_yet_run: ['Not yet run', 'Run a scan to start measuring visibility.'],
+    absent: ['Brand not mentioned', 'The scan ran and your brand was never named.'],
+    insufficient: ['Collecting data', 'Too few answers to report a score yet.'],
+  };
+
+  function renderVisibilityScore(visibility) {
+    const valueEl = $('#overview-answer-visibility');
+    const unitEl = $('#overview-answer-visibility-unit');
+    const detailEl = $('#overview-visibility-delta');
+    if (!valueEl || !detailEl) return;
+
+    if (!visibility || visibility.state !== 'ok') {
+      const state = visibility?.state || 'not_yet_run';
+      const [label, help] = EMPTY_STATE_COPY[state] || EMPTY_STATE_COPY.not_yet_run;
+      valueEl.textContent = '—';
+      if (unitEl) unitEl.textContent = '';
+      detailEl.textContent = state === 'insufficient'
+        ? `${label} · ${visibility?.n ?? 0}/${visibility?.threshold ?? 20} answers`
+        : `${label} · ${help}`;
+      detailEl.dataset.state = state;
+      return;
+    }
+
+    const score = visibility.visibility_score;
+    valueEl.textContent = formatNumber(score.value);
+    if (unitEl) unitEl.textContent = '';
+    const oneDp = (v) => (v === null || v === undefined) ? '—' : Number(v).toFixed(1);
+    const interval = (score.low !== null && score.high !== null)
+      ? `95% CI ${oneDp(score.low)}–${oneDp(score.high)}`
+      : 'interval unavailable';
+    const delta = visibility.delta || {};
+    const movement = delta.state === 'no_measurable_change'
+      ? 'no measurable change'
+      : (delta.state === 'up' || delta.state === 'down')
+        ? `${delta.delta > 0 ? '+' : ''}${formatNumber(delta.delta)} vs previous`
+        : 'no prior period';
+    detailEl.textContent = `${interval} · n=${score.n} · ${movement}`;
+    detailEl.dataset.state = 'ok';
+  }
+
   function renderOverviewEvidence(evidence) {
     const run = evidence?.run;
     const answers = evidence?.answers || [];
@@ -406,10 +450,14 @@ document.addEventListener('DOMContentLoaded', () => {
       `/api/analytics/projects/${projectId}/search-console`,
       `/api/analytics/projects/${projectId}/tracking`,
       `/api/analytics/projects/${projectId}/evidence`,
+      // The visibility panel reads metrics_daily via /report, never raw answers.
+      // /evidence stays for the drill-down table, which is evidence inspection.
+      `/api/analytics/projects/${projectId}/report`,
     ];
     const results = await Promise.all(endpoints.map((url) => apiRequest(url).catch((error) => ({ _error: error }))));
     if (sequence !== state.loadSequence || projectId !== state.selectedProjectId) return;
-    const [auditResult, searchResult, trackingResult, evidenceResult] = results;
+    const [auditResult, searchResult, trackingResult, evidenceResult, reportResult] = results;
+    state.report = reportResult && !reportResult._error ? reportResult : null;
     if (auditResult._error) throw auditResult._error;
     state.audit = auditResult;
     state.searchConsole = searchResult._error ? null : searchResult.search_console;
@@ -660,6 +708,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (loadError) {
       setSourceStatus(chip, 'error', 'Could not load');
       renderOverviewEvidence(null);
+      renderVisibilityScore(state.report?.visibility);
       return;
     }
     const run = evidence?.run;
@@ -668,6 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
       $('#evidence-empty').hidden = false;
       $('#evidence-content').hidden = true;
       renderOverviewEvidence(null);
+      renderVisibilityScore(state.report?.visibility);
       renderOpportunities([]);
       return;
     }
@@ -689,6 +739,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ? evidence.answers.map((answer) => `<tr><td>${esc(answer.prompt)}</td><td>${esc(answer.topic_name || 'Unassigned')}</td><td>${esc(answer.provider)}<br><small>${esc(answer.model)}</small></td><td>${esc(yesNoUnavailable(answer.brand_mentioned))}</td><td>${esc(yesNoUnavailable(answer.brand_cited))}</td><td>${answer.best_source_rank ? `#${answer.best_source_rank}` : (answer.source_present === null ? 'Unavailable' : 'Not present')}</td><td>${esc(formatDate(answer.completed_at || answer.created_at))}</td><td><button class="evidence-view" type="button" data-evidence-id="${answer.id}">View evidence</button></td></tr>`).join('')
       : '<tr><td colspan="8">No evidence records were completed.</td></tr>';
     renderOverviewEvidence(evidence);
+    renderVisibilityScore(state.report?.visibility);
     renderOpportunities(evidence.opportunities || []);
   }
 

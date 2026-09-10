@@ -27,8 +27,9 @@ import time
 
 from app.config import PERPLEXITY_MAX_PROMPTS_PER_SCAN
 from app.costs import ceiling_status, record_usage
-from app.rollup import rollup_workspace_day
+from app.rollup import rollup_workspace_day, utc_today
 from app.db import engine
+from app.engines.registry import adapter_for
 from app.engines.perplexity import call_perplexity_answer, call_perplexity_search, normalise_perplexity_sources, perplexity_answer_citations, perplexity_answer_text
 from app.extraction.pipeline import (
     categorise_sources,
@@ -41,7 +42,8 @@ from app.http_client import ProviderAPIError
 from app.jobs import update_analytics_job
 from app.llm import open_model_settings
 from app.metrics import provider_evidence_rows
-from app.models import analytics_answer_sources, analytics_audit_jobs, competitors, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_scan_schedules, analytics_topics, analytics_tracked_prompts
+from app.utils import normalise_domain
+from app.models import engines as engines_table, analytics_answer_sources, analytics_audit_jobs, competitors, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_scan_schedules, analytics_topics, analytics_tracked_prompts
 from app.recommendations import open_model_evidence_opportunities, rule_based_opportunities
 from app.routes.pages import index
 
@@ -87,22 +89,74 @@ def call_with_retries(call, *args, attempts=None):
     return None, f'{last_error} (after {attempts} attempts)'
 
 
-def persist_provider_answer(scan_id, prompt, project, search_payload, answer_payload, errors, latency_ms):
-    answer_text = perplexity_answer_text(answer_payload or {})
-    sources = normalise_perplexity_sources(search_payload or {}, answer_payload or {})
-    answer_available = bool(answer_payload is not None and answer_text)
+def enabled_engines(conn):
+    """Enabled engines from the table, paired with their adapter.
+
+    The table is the registry. An enabled row whose module is not deployed is
+    skipped rather than fatal, so a half-rolled-out engine cannot take the run
+    down with it.
+    """
+    rows = conn.execute(
+        select(engines_table).where(engines_table.c.enabled).order_by(engines_table.c.id)
+    ).mappings().all()
+    pairs = []
+    for row in rows:
+        adapter = adapter_for(row['key'])
+        if adapter is not None:
+            pairs.append((dict(row), adapter))
+    return pairs
+
+
+def run_with_retries(adapter, prompt, region, attempts=None):
+    """Retry an adapter call with jittered backoff.
+
+    The adapter never raises, so retrying is driven by result.status rather than by
+    exceptions. An 'empty' result is not retried - the provider answered, it just
+    had nothing to say, and asking again costs money for the same answer.
+    """
+    attempts = attempts or ANSWER_RETRY_ATTEMPTS
+    result = None
+    for attempt in range(1, attempts + 1):
+        result = adapter.run(prompt, region=region)
+        if result.status != 'failed':
+            return result
+        if attempt < attempts:
+            time.sleep(retry_delay(attempt))
+    return result
+
+
+def persist_provider_answer(scan_id, prompt, project, result, errors, latency_ms,
+                            *, engine_row=None):
+    """Write one answer row from an EngineResult, whatever the engine reported.
+
+    A failed engine still produces a row: a silent gap is indistinguishable from a
+    prompt nobody ran, and the denominator has to know the difference.
+    """
+    answer_text = result.answer_text
+    sources = [
+        {'rank': c.position, 'source_kind': 'search_result', 'title': c.title,
+         'url': c.url, 'domain': normalise_domain(c.url), 'snippet': None,
+         'published_at': None}
+        for c in result.citations
+    ]
+    search_payload = (result.raw_response or {}).get('search')
+    answer_payload = (result.raw_response or {}).get('answer')
+    answer_available = bool(answer_text)
     # brand_mentioned / brand_cited / rank are no longer frozen onto the answer row.
     # They are derived below by the versioned extractor, so a formula change can be
     # replayed over this same immutable answer at zero provider cost.
-    status = 'succeeded' if search_payload is not None and answer_available else ('partial' if search_payload is not None or answer_available else 'failed')
+    status = ('succeeded' if result.status == 'ok'
+              else 'partial' if result.status == 'empty'
+              else 'failed')
     raw_response = json.dumps({'search': search_payload, 'answer': answer_payload}, ensure_ascii=False)
     now = datetime.utcnow()
-    answer_model = (answer_payload or {}).get('model') or f"preset:{os.environ.get('PERPLEXITY_AGENT_PRESET', 'low')}"
+    answer_model = result.model_version or f"preset:{os.environ.get('PERPLEXITY_AGENT_PRESET', 'low')}"
     with engine.begin() as conn:
         result = conn.execute(insert(analytics_provider_answers).values(
             scan_run_id=scan_id, prompt_id=prompt['id'],
             prompt_text=prompt['prompt'], prompt_intent=prompt.get('intent'), topic_name=prompt.get('topic_name'),
-            provider='Perplexity',
+            provider=(engine_row or {}).get('display_name') or 'Perplexity',
+            engine_id=(engine_row or {}).get('id'),
             model=str(answer_model)[:160], status=status,
             search_request_id=(search_payload or {}).get('id'), answer_request_id=(answer_payload or {}).get('id'),
             answer_text=answer_text or None, raw_response=raw_response,
@@ -264,6 +318,15 @@ def run_prompt_scan_job(job_id):
         }
     pending = [prompt for prompt in prompts if prompt['id'] not in answered_prompt_ids]
 
+    with engine.connect() as conn:
+        engines_in_use = enabled_engines(conn)
+    if not engines_in_use:
+        update_analytics_job(
+            job_id, status='failed_terminal', progress=100,
+            error='No enabled engine has a registered adapter.',
+            completed_at=datetime.utcnow())
+        return
+
     failures = []
     index = len(answered_prompt_ids)
     # A 300-prompt workspace becomes 12 sequential batches of 25 rather than a 409.
@@ -272,37 +335,38 @@ def run_prompt_scan_job(job_id):
     for batch in batched(pending, PERPLEXITY_MAX_PROMPTS_PER_SCAN):
         for prompt in batch:
             index += 1
-            started = time.monotonic()
-            errors = []
-            search_payload, search_error = call_with_retries(
-                call_perplexity_search, prompt['prompt'], region)
-            # Every provider call is metered, success or failure: a retry storm
-            # writes no runs but still burns money.
-            record_usage(workspace_id=workspace_id, org_id=org_id,
-                         category='engine_query', provider='Perplexity')
-            if search_error:
-                errors.append(f'Search API: {search_error}')
-            answer_payload, answer_error = call_with_retries(
-                call_perplexity_answer, prompt['prompt'])
-            record_usage(workspace_id=workspace_id, org_id=org_id,
-                         category='agent', provider='Perplexity')
-            if answer_error:
-                errors.append(f'Agent API: {answer_error}')
-            elif not perplexity_answer_text(answer_payload):
-                errors.append('Agent API: completed without answer text')
-            if errors:
-                failures.append(f"Prompt {prompt['id']}: {'; '.join(errors)}")
-            # The row is written whatever happened, so a failed answer is recorded
-            # evidence rather than a silent gap.
-            persist_provider_answer(
-                scan_id, prompt, project, search_payload, answer_payload, errors,
-                round((time.monotonic() - started) * 1000),
-            )
-            # Extraction is a regex and costs nothing, but the row keeps the ledger a
-            # complete record of what was derived from which answer - and makes
-            # "re-running extraction is free" auditable rather than merely claimed.
-            record_usage(workspace_id=workspace_id, org_id=org_id,
-                         category='extraction', provider='regex')
+            # One adapter run per prompt per enabled engine. There is no branch on
+            # a provider name anywhere here - the engines table decides what runs.
+            for engine_row, adapter in engines_in_use:
+                started = time.monotonic()
+                errors = []
+                result = run_with_retries(adapter, prompt['prompt'], region)
+
+                # Every provider call is metered, success or failure: a retry storm
+                # writes no runs but still burns money. One row per engine query.
+                record_usage(
+                    workspace_id=workspace_id, org_id=org_id,
+                    category='engine_query', provider=engine_row['display_name'],
+                    cost_usd=result.cost_usd or None,
+                )
+                if result.status == 'failed':
+                    errors.append(f"{engine_row['display_name']}: {result.error}")
+                elif result.status == 'empty':
+                    errors.append(f"{engine_row['display_name']}: completed without answer text")
+                if errors:
+                    failures.append(f"Prompt {prompt['id']}: {'; '.join(errors)}")
+
+                # The row is written whatever happened, so a failed answer is
+                # recorded evidence rather than a silent gap.
+                persist_provider_answer(
+                    scan_id, prompt, project, result, errors,
+                    result.latency_ms or round((time.monotonic() - started) * 1000),
+                    engine_row=engine_row,
+                )
+                # Extraction is a regex and costs nothing, but the row keeps the
+                # ledger a complete record of what was derived from which answer.
+                record_usage(workspace_id=workspace_id, org_id=org_id,
+                             category='extraction', provider='regex')
             if index < len(prompts):
                 time.sleep(max(0, min(float(os.environ.get('PERPLEXITY_REQUEST_DELAY_SECONDS', '0.2')), 3)))
         update_analytics_job(
@@ -365,7 +429,7 @@ def run_prompt_scan_job(job_id):
         ))
     # Roll up into metrics_daily, the only table dashboards read. Idempotent, so a
     # retried job recomputes the day rather than double-counting it.
-    rollup_workspace_day(workspace_id, datetime.utcnow().date())
+    rollup_workspace_day(workspace_id, utc_today())
 
     final_job_status = 'succeeded' if evidence_rows and any(row['status'] in {'succeeded', 'partial'} for row in evidence_rows) else 'failed_terminal'
     update_analytics_job(

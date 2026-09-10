@@ -41,6 +41,9 @@ RECORDERS = {
         'search': ('app.engines.perplexity:call_perplexity_search', 'PERPLEXITY_API_KEY'),
         'answer': ('app.engines.perplexity:call_perplexity_answer', 'PERPLEXITY_API_KEY'),
     },
+    'gemini': {
+        'answer': ('app.engines.gemini:call_gemini_answer', 'GEMINI_API_KEY'),
+    },
 }
 
 
