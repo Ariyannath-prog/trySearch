@@ -20,7 +20,15 @@ def normalize_database_url(database_url):
     return database_url
 
 
+# `DATABASE_URL` is the portable application setting.  The Vercel Neon
+# integration in this project also supplies its managed URL as
+# `DATABASE2_DATABASE_URL`.  A previous manual setting contains the literal
+# Supabase placeholder `REGION`, which can never resolve; prefer the connected
+# Neon URL only in that broken-placeholder case so production can boot while
+# retaining normal DATABASE_URL behaviour everywhere else.
 database_url = os.environ.get('DATABASE_URL')
+if database_url and 'REGION.pooler.supabase.com' in database_url:
+    database_url = os.environ.get('DATABASE2_DATABASE_URL') or database_url
 if not database_url:
     raise RuntimeError('DATABASE_URL must be set to a PostgreSQL connection URL.')
 
