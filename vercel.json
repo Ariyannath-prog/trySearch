@@ -1,9 +1,3 @@
 {
-  "buildCommand": "alembic upgrade head",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/api"
-    }
-  ]
+  "buildCommand": "alembic upgrade head"
 }
