@@ -4,7 +4,6 @@ import os
 import unittest
 
 os.environ['APP_ENV'] = 'development'
-os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'stats-test-secret'
 
 from app import stats  # noqa: E402

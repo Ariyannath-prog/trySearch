@@ -45,7 +45,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# app.db already applied the psycopg-3 dialect fix and the SQLite fallback.
+# app.db already applied the psycopg-3 dialect fix.
 config.set_main_option('sqlalchemy.url', DB_URL.replace('%', '%%'))
 
 target_metadata = metadata
@@ -74,8 +74,6 @@ def run_migrations_online():
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
-            # SQLite cannot ALTER a column in place; batch mode rewrites the table.
-            render_as_batch=connection.dialect.name == 'sqlite',
         )
         with context.begin_transaction():
             context.run_migrations()

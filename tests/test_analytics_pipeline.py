@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 # Never let this helper-level test module attach to a developer or production DB.
 os.environ['APP_ENV'] = 'development'
-os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'analytics-test-secret'
 
 import server_pg  # noqa: E402

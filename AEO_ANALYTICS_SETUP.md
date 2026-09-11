@@ -115,7 +115,7 @@ For higher scan volume, replace the lightweight thread with a Redis/Celery worke
 
 ## Production environment variables
 
-At minimum, retain the existing `DATABASE_URL`, `APP_ENV=production`, and `SECRET_KEY`. Add only the sources you plan to enable:
+At minimum, retain the managed PostgreSQL `DATABASE_URL`, `APP_ENV=production`, and `SECRET_KEY`. Add only the sources you plan to enable:
 
 ```text
 PERPLEXITY_API_KEY

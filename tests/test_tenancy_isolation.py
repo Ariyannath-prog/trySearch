@@ -9,7 +9,6 @@ import os
 import unittest
 
 os.environ['APP_ENV'] = 'development'
-os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'tenancy-isolation-test-secret'
 
 import server_pg  # noqa: E402

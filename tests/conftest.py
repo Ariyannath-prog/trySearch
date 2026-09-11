@@ -1,9 +1,8 @@
 """Test schema setup, recorded-fixture replay, and the no-network guard.
 
-Application code no longer creates tables — Alembic owns the schema as of T2. The
-tests run against in-memory SQLite, where replaying the migration chain for every
-session would be slow and would exercise Alembic rather than the code under test,
-so the schema is built straight from the models here.
+Application code no longer creates tables — Alembic owns the schema as of T2. Tests
+use a dedicated PostgreSQL database and build the schema straight from the
+models here so the fixture suite remains independent of migration ordering.
 
 This runs at import, not in a fixture, and that ordering matters: pytest imports
 conftest before the test modules, and each test module calls `import server_pg` at
@@ -21,9 +20,11 @@ import pytest
 
 os.environ.setdefault('APP_ENV', 'development')
 os.environ.setdefault('SECRET_KEY', 'test-secret')
-# Bind the engine to in-memory SQLite before anything imports app.db. The test
-# modules set this to the same value; whichever runs first wins and they agree.
-os.environ['DATABASE_URL'] = 'sqlite://'
+# Never point this at a production project.
+test_database_url = os.environ.get('TEST_DATABASE_URL')
+if not test_database_url:
+    raise RuntimeError('Set TEST_DATABASE_URL to a dedicated PostgreSQL database before running tests.')
+os.environ['DATABASE_URL'] = test_database_url
 
 from app import models  # noqa: E402,F401 - registers the tables on `metadata`
 from app.db import engine, metadata  # noqa: E402
@@ -82,17 +83,48 @@ def no_network(monkeypatch):
     CLAUDE.md forbids paid calls from tests, and SPRINT T3 asks for proof that the
     suite runs with no network at all. Enforcing it on every run is stronger than
     proving it once: a test that starts reaching the network fails immediately
-    rather than passing slowly and quietly costing money.
+    rather than passing slowly and quietly costing money. The local PostgreSQL
+    service used by CI is the one deliberate exception.
     """
-    def deny(*args, **kwargs):
+    def is_local_database(address):
+        if not isinstance(address, tuple) or not address:
+            return False
+        host = address[0]
+        return host in {'localhost', '127.0.0.1', '::1'}
+
+    def deny_socket_connect(*args, **kwargs):
+        address = args[1] if len(args) > 1 else kwargs.get('address')
+        if is_local_database(address):
+            return original_connect(*args, **kwargs)
         raise NetworkAccessDenied(
             'This test tried to open a network connection. Tests replay recorded '
             'fixtures from tests/fixtures/; re-record with scripts/record_fixture.py.'
         )
 
-    monkeypatch.setattr(socket.socket, 'connect', deny)
-    monkeypatch.setattr(socket.socket, 'connect_ex', deny)
-    monkeypatch.setattr(socket, 'create_connection', deny)
+    def deny_socket_connect_ex(*args, **kwargs):
+        address = args[1] if len(args) > 1 else kwargs.get('address')
+        if is_local_database(address):
+            return original_connect_ex(*args, **kwargs)
+        raise NetworkAccessDenied(
+            'This test tried to open a network connection. Tests replay recorded '
+            'fixtures from tests/fixtures/; re-record with scripts/record_fixture.py.'
+        )
+
+    def deny_create_connection(*args, **kwargs):
+        address = args[0] if args else kwargs.get('address')
+        if is_local_database(address):
+            return original_create_connection(*args, **kwargs)
+        raise NetworkAccessDenied(
+            'This test tried to open a network connection. Tests replay recorded '
+            'fixtures from tests/fixtures/; re-record with scripts/record_fixture.py.'
+        )
+
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+    original_create_connection = socket.create_connection
+    monkeypatch.setattr(socket.socket, 'connect', deny_socket_connect)
+    monkeypatch.setattr(socket.socket, 'connect_ex', deny_socket_connect_ex)
+    monkeypatch.setattr(socket, 'create_connection', deny_create_connection)
     yield
 
 

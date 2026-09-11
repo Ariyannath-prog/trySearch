@@ -8,7 +8,6 @@ from sqlalchemy import insert, select
 
 
 os.environ['APP_ENV'] = 'development'
-os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'analytics-truth-contract-test-secret'
 
 import server_pg  # noqa: E402

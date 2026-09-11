@@ -2,7 +2,8 @@
 
 T1 splits server_pg.py into the app/ module tree. That refactor is only safe if every
 route answers identically afterwards. This script drives the Flask test client over the
-whole url_map against a throwaway SQLite database and writes a normalised JSON snapshot.
+whole url_map against a dedicated PostgreSQL test database and writes a
+normalised JSON snapshot.
 
     python scripts/route_snapshot.py before.json
     # ...refactor...
@@ -17,13 +18,11 @@ import json
 import os
 import re
 import sys
-import tempfile
 
-# A throwaway database per run, so POST routes that write rows cannot make two
-# snapshots differ for reasons that have nothing to do with the refactor.
-_TMP_DB = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
-_TMP_DB.close()
-os.environ['DATABASE_URL'] = f'sqlite:///{_TMP_DB.name}'
+database_url = os.environ.get('TEST_DATABASE_URL')
+if not database_url:
+    raise RuntimeError('Set TEST_DATABASE_URL to a dedicated PostgreSQL database.')
+os.environ['DATABASE_URL'] = database_url
 os.environ['APP_ENV'] = 'development'
 os.environ.setdefault('SECRET_KEY', 'route-snapshot-fixed-key')
 # Empty provider credentials keep every outbound call on its unconfigured path.

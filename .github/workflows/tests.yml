@@ -20,6 +20,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: trysearch_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d trysearch_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +55,9 @@ jobs:
         # directory on sys.path, which is how tests/conftest.py finds the `app`
         # package. Bare `pytest` does not, and fails with ModuleNotFoundError.
         #
-        # No DATABASE_URL and no provider keys are set on purpose. The suite binds
-        # in-memory SQLite in tests/conftest.py and replays recorded fixtures, so a
-        # test that reaches for a real database or a paid API fails here.
+        # CI uses a disposable PostgreSQL service. It never connects to Supabase
+        # or any other shared environment, and recorded fixtures keep provider
+        # tests offline.
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/trysearch_test
         run: python -m pytest -q

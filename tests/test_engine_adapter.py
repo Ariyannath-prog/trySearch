@@ -8,7 +8,6 @@ from decimal import Decimal
 from unittest.mock import patch
 
 os.environ['APP_ENV'] = 'development'
-os.environ['DATABASE_URL'] = 'sqlite://'
 os.environ['SECRET_KEY'] = 'engine-adapter-test-secret'
 
 import server_pg  # noqa: E402,F401
