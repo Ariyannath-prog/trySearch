@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ title }} — AI Search Visibility</title>
+<style>
+  :root { --accent: {{ report.branding.accent_colour }}; --ink:#12131a; --muted:#5c6070;
+          --line:#e4e6ee; --bg:#f7f8fc; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:860px; margin:0 auto; padding:40px 24px 72px; }
+  header { display:flex; align-items:center; gap:16px; padding-bottom:24px;
+           border-bottom:3px solid var(--accent); margin-bottom:32px; }
+  header img { max-height:44px; max-width:180px; }
+  header .name { font-size:22px; font-weight:650; }
+  header .meta { margin-left:auto; text-align:right; color:var(--muted); font-size:13px; }
+  .mark { font-size:12px; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px;
+            padding:24px; margin-bottom:20px; }
+  h2 { margin:0 0 4px; font-size:15px; letter-spacing:.06em; text-transform:uppercase;
+       color:var(--muted); font-weight:650; }
+  .headline { font-size:52px; font-weight:700; line-height:1.05; margin:12px 0 6px; }
+  /* Sample size and interval sit beside the number, never behind a hover. */
+  .qualifier { color:var(--muted); font-size:14px; }
+  .empty { color:var(--muted); font-size:15px; padding:8px 0 2px; }
+  .empty strong { color:var(--ink); display:block; margin-bottom:2px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; margin-top:12px; }
+  th { text-align:left; font-weight:600; color:var(--muted); font-size:12px;
+       letter-spacing:.05em; text-transform:uppercase; padding:8px 10px; border-bottom:1px solid var(--line); }
+  td { padding:9px 10px; border-bottom:1px solid var(--line); }
+  tr:last-child td { border-bottom:none; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px;
+         background:#eef1f8; color:var(--muted); }
+  .tag.own { background:color-mix(in srgb, var(--accent) 16%, #fff); color:var(--accent); }
+  .tag.competitor { background:#fdecec; color:#b3261e; }
+  .banner { background:#fff8e6; border:1px solid #f0d999; color:#7a5b00;
+            padding:12px 16px; border-radius:10px; font-size:14px; margin-bottom:20px; }
+  footer { margin-top:36px; padding-top:20px; border-top:1px solid var(--line);
+           color:var(--muted); font-size:13px; }
+  footer dt { font-weight:600; color:var(--ink); margin-top:10px; }
+  footer dd { margin:2px 0 0; }
+  @media print { body { background:#fff; } section { break-inside:avoid; border-radius:0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    {% if report.branding.logo_url %}<img src="{{ report.branding.logo_url }}" alt="">{% endif %}
+    <div>
+      <div class="name">{{ title }}</div>
+      <div class="qualifier">AI search visibility</div>
+    </div>
+    <div class="meta">
+      {% if report.as_of %}Data as of {{ report.as_of|humandate }}<br>{% endif %}
+      Generated {{ report.generated_at|humandate }}
+      {% if report.branding.show_trysearch_mark %}<div class="mark">trySearch</div>{% endif %}
+    </div>
+  </header>
+
+  {% if report.scan_in_progress %}
+    <div class="banner">
+      A scan is running now. These figures come from the last complete run
+      {% if report.as_of %}({{ report.as_of|humandate }}){% endif %} and will change when it finishes.
+    </div>
+  {% endif %}
+
+  {% if 'visibility' in report.sections %}
+  <section>
+    <h2>Visibility score</h2>
+    {% set v = report.visibility %}
+    {% if v.state == 'ok' %}
+      <div class="headline">{{ '%.1f'|format(v.visibility_score.value) }}</div>
+      <div class="qualifier">
+        95% confidence interval
+        {{ '%.1f'|format(v.visibility_score.low) }}–{{ '%.1f'|format(v.visibility_score.high) }}
+        · based on {{ v.visibility_score.n }} answers
+      </div>
+      <table>
+        <tr><th>Metric</th><th>Value</th><th>95% interval</th><th>Answers</th></tr>
+        <tr><td>Mention rate</td>
+            <td>{{ '%.0f%%'|format(v.mention_rate.value * 100) }}</td>
+            <td>{{ '%.0f%%'|format(v.mention_rate.low * 100) }}–{{ '%.0f%%'|format(v.mention_rate.high * 100) }}</td>
+            <td>{{ v.mention_rate.n }}</td></tr>
+        <tr><td>Citation rate</td>
+            <td>{{ '%.0f%%'|format(v.citation_rate.value * 100) }}</td>
+            <td>{{ '%.0f%%'|format(v.citation_rate.low * 100) }}–{{ '%.0f%%'|format(v.citation_rate.high * 100) }}</td>
+            <td>{{ v.citation_rate.n }}</td></tr>
+      </table>
+    {% else %}
+      {# No fabricated number. The section says which empty state it is in. #}
+      <div class="empty">
+        <strong>{{ {'not_yet_run':'Not yet run','absent':'Brand not mentioned','insufficient':'Collecting data'}[v.state] }}</strong>
+        {{ v.empty_reason }}
+        {% if v.state == 'insufficient' %} ({{ v.n }} of {{ v.threshold }} answers){% endif %}
+      </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if 'share_of_voice' in report.sections %}
+  <section>
+    <h2>Share of voice</h2>
+    {% set s = report.share_of_voice %}
+    {% if s.value is not none %}
+      <div class="headline">{{ '%.0f%%'|format(s.value * 100) }}</div>
+      <div class="qualifier">of brand mentions across you and tracked competitors · based on {{ s.n }} answers</div>
+    {% else %}
+      <div class="empty"><strong>Not available</strong>{{ s.empty_reason }}</div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if 'citations' in report.sections %}
+  <section>
+    <h2>Top cited domains</h2>
+    {% set c = report.citations %}
+    {% if c.total %}
+      <div class="qualifier">{{ c.total }} citations recorded</div>
+      <table>
+        <tr><th>Domain</th><th>Type</th><th>Citations</th><th>Share</th></tr>
+        {% for d in c.domains %}
+        <tr><td>{{ d.domain }}</td>
+            <td><span class="tag {{ d.bucket }}">{{ d.bucket.replace('_',' ') }}</span></td>
+            <td>{{ d.citations }}</td>
+            <td>{{ '%.0f%%'|format(d.share * 100) }}</td></tr>
+        {% endfor %}
+      </table>
+      {% if c.gaps %}
+        <h2 style="margin-top:26px">Where competitors are cited and you are not</h2>
+        <table>
+          <tr><th>Domain</th><th>Type</th><th>Citations</th></tr>
+          {% for g in c.gaps %}
+          <tr><td>{{ g.domain }}</td><td><span class="tag">{{ g.category }}</span></td>
+              <td>{{ g.total_answers }}</td></tr>
+          {% endfor %}
+        </table>
+      {% endif %}
+    {% else %}
+      <div class="empty"><strong>No citations yet</strong>{{ c.empty_reason }}</div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if 'prompts' in report.sections %}
+  <section>
+    <h2>Tracked prompts</h2>
+    {% if report.prompts.n %}
+      <div class="qualifier">{{ report.prompts.n }} active prompts</div>
+      <table>
+        <tr><th>Prompt</th><th>Intent</th></tr>
+        {% for p in report.prompts.rows %}
+        <tr><td>{{ p.prompt }}</td><td><span class="tag">{{ p.intent }}</span></td></tr>
+        {% endfor %}
+      </table>
+    {% else %}
+      <div class="empty"><strong>No prompts tracked</strong>{{ report.prompts.empty_reason }}</div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if 'methodology' in report.sections %}
+  <footer>
+    <strong>How these numbers are produced</strong>
+    <dl>
+      {% for key, value in report.methodology.items() %}
+      <dt>{{ key.replace('_',' ')|capitalize }}</dt><dd>{{ value }}</dd>
+      {% endfor %}
+    </dl>
+    {% if report.branding.show_trysearch_mark %}
+      <p class="mark" style="margin-top:20px">Measured with trySearch</p>
+    {% endif %}
+  </footer>
+  {% endif %}
+
+</div>
+</body>
+</html>

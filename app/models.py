@@ -586,3 +586,31 @@ engines = Table(
     CheckConstraint("source_type IN ('api', 'scraper', 'serp_vendor')",
                     name='ck_engines_source_type'),
 )
+
+
+workspace_branding = Table(
+    'workspace_branding',
+    metadata,
+    Column('workspace_id', Integer, primary_key=True),
+    Column('display_name', Text, nullable=True),
+    Column('logo_url', Text, nullable=True),
+    Column('accent_colour', Text, nullable=True),
+    # Below Enterprise the trysearch mark stays in the header and footer. The plan
+    # decides this, not the client, so it is a server-side flag.
+    Column('hide_trysearch_mark', Boolean, nullable=False, default=False),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+)
+
+report_shares = Table(
+    'report_shares',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    # secrets.token_urlsafe(32). Never sequential, never derived from the id.
+    Column('token', Text, nullable=False, unique=True),
+    Column('workspace_id', Integer, nullable=False, index=True),
+    Column('sections', Text, nullable=True),
+    Column('expires_at', DateTime, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('revoked_at', DateTime, nullable=True),
+)
