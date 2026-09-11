@@ -47,6 +47,7 @@ def create_app():
     from app.routes.onboarding import onboarding_bp
     from app.routes.pages import pages_bp
     from app.routes.prompts import prompts_bp
+    from app.routes.reports import reports_bp
 
     for blueprint in (
         auth_bp,
@@ -58,8 +59,21 @@ def create_app():
         onboarding_bp,
         pages_bp,
         prompts_bp,
+        reports_bp,
     ):
         app.register_blueprint(blueprint)
+
+    @app.template_filter('humandate')
+    def humandate(value):
+        """ISO timestamp -> '31 Aug 2026'. A report is read by a buyer."""
+        if not value:
+            return ''
+        from datetime import datetime as _dt
+        text = str(value).replace('Z', '').split('.')[0]
+        try:
+            return _dt.fromisoformat(text).strftime('%d %b %Y')
+        except ValueError:
+            return str(value)
 
     from app.worker import register_cli
     register_cli(app)
