@@ -16,11 +16,6 @@
 </head>
 <body>
 <style>
-/* ══════════════════════════════════════════════════════════════════════
-   trysearch — one file: marketing site → onboarding → product app
-   Light palette on bare :root. Dark redefines TOKENS ONLY.
-   No component rule ever declares a raw colour.
-   ══════════════════════════════════════════════════════════════════════ */
 :root{
   --ground:#F2F1F5; --surface:#FCFBFD; --surface-2:#EDEBF1; --surface-3:#E4E1E9;
   --ink:#17151C; --ink-2:#4A4553; --ink-3:#6B6577; --ink-4:#918B9C;
@@ -3881,8 +3876,6 @@ $$('#freqseg button').forEach(b=>b.addEventListener('click',()=>{
 $('#probeToggle').addEventListener('click',()=>{
   const t=$('#probeToggle');
   t.setAttribute('aria-pressed',String(t.getAttribute('aria-pressed')!=='true')); cost();});
-
-/* ══════════════════════════════ BOOT ══════════════════════════════ */
 let lastBp=bp();
 addEventListener('resize',()=>{
   if(bp()===lastBp) return; lastBp=bp();
