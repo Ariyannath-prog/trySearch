@@ -1,0 +1,1833 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="trySearch pricing — AI search visibility, citations, website audit, reports and AEO analytics.">
+  <title>Pricing — trySearch</title>
+
+  <style>
+    :root{
+      color-scheme:dark;
+      color-scheme:dark;
+      --bg:#0b0a0f;
+      --surface:#121017;
+      --surface-2:#1a1720;
+      --ink:#f7f3f8;
+      --ink-2:#d0c9d5;
+      --ink-3:#9e96a8;
+      --rule:#2d2835;
+      --brand:#ed3b78;
+      --brand-dark:#ff6797;
+      --brand-wash:#351524;
+      --good:#40c98a;
+      --radius:20px;
+      --max:1180px;
+    }
+
+    *{box-sizing:border-box}
+
+    html{scroll-behavior:smooth}
+
+    body{
+      margin:0;
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:
+        radial-gradient(circle at top left,rgba(196,24,92,.08),transparent 32%),
+        var(--bg);
+      color:var(--ink);
+      line-height:1.55;
+    }
+
+    a{text-decoration:none;color:inherit}
+
+    .wrap{
+      width:min(calc(100% - 40px),var(--max));
+      margin:0 auto;
+    }
+
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:20;
+      background:rgba(11,10,15,.88);
+      backdrop-filter:blur(16px);
+      border-bottom:1px solid rgba(221,217,228,.8);
+    }
+
+    .nav{
+      min-height:72px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:20px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:800;
+      letter-spacing:-.03em;
+    }
+
+    .brand-mark{
+      width:34px;
+      height:34px;
+      border-radius:10px;
+      display:grid;
+      place-items:center;
+      color:#fff;
+      background:var(--brand);
+      font-size:15px;
+    }
+
+    .navlinks{
+      display:flex;
+      align-items:center;
+      gap:20px;
+      color:var(--ink-3);
+      font-size:14px;
+    }
+
+    .navlinks a:hover{color:var(--ink)}
+
+    .nav-actions{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    .btn{
+      border:1px solid var(--brand);
+      background:var(--brand);
+      color:#fff;
+      border-radius:12px;
+      padding:11px 17px;
+      font-size:13px;
+      font-weight:700;
+      cursor:pointer;
+      transition:.18s ease;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+    }
+
+    .btn:hover{
+      background:var(--brand-dark);
+      border-color:var(--brand-dark);
+      transform:translateY(-1px);
+    }
+
+    .btn.ghost{
+      background:transparent;
+      color:var(--ink);
+      border-color:var(--rule);
+    }
+
+    .btn.ghost:hover{
+      background:var(--surface);
+      border-color:#bbb5c4;
+    }
+
+    .hero{
+      padding:84px 0 52px;
+      text-align:center;
+    }
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:7px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--brand-wash);
+      color:var(--brand-dark);
+      font-size:11px;
+      font-weight:800;
+      letter-spacing:.08em;
+      text-transform:uppercase;
+    }
+
+    h1{
+      margin:18px auto 12px;
+      max-width:850px;
+      font-size:clamp(42px,7vw,72px);
+      line-height:.98;
+      letter-spacing:-.055em;
+    }
+
+    .hero p{
+      max-width:720px;
+      margin:0 auto;
+      color:var(--ink-3);
+      font-size:17px;
+    }
+
+    .billing{
+      margin:30px auto 0;
+      display:inline-flex;
+      padding:4px;
+      background:var(--surface);
+      border:1px solid var(--rule);
+      border-radius:999px;
+    }
+
+    .billing button{
+      border:0;
+      background:transparent;
+      color:var(--ink-3);
+      padding:9px 15px;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:700;
+      font-size:12px;
+    }
+
+    .billing button.active{
+      color:#fff;
+      background:var(--ink);
+    }
+
+    .plans{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:16px;
+      padding:10px 0 76px;
+    }
+
+    .plan{
+      position:relative;
+      background:var(--surface);
+      border:1px solid var(--rule);
+      border-radius:var(--radius);
+      padding:24px;
+      display:flex;
+      flex-direction:column;
+      min-height:620px;
+      box-shadow:0 10px 35px rgba(24,18,30,.035);
+    }
+
+    .plan.featured{
+      border-color:var(--brand);
+      box-shadow:0 0 0 3px var(--brand-wash),0 14px 40px rgba(196,24,92,.10);
+    }
+
+    .ribbon{
+      position:absolute;
+      top:18px;
+      right:18px;
+      padding:5px 9px;
+      border-radius:999px;
+      background:var(--brand-wash);
+      color:var(--brand-dark);
+      font-size:10px;
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.05em;
+    }
+
+    .plan-name{
+      margin:0;
+      font-size:15px;
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--ink-3);
+    }
+
+    .price{
+      margin:14px 0 3px;
+      display:flex;
+      align-items:baseline;
+      gap:5px;
+    }
+
+    .price strong{
+      font-size:46px;
+      line-height:1;
+      letter-spacing:-.055em;
+    }
+
+    .price span{
+      color:var(--ink-3);
+      font-size:13px;
+    }
+
+    .desc{
+      margin:8px 0 20px;
+      min-height:50px;
+      color:var(--ink-3);
+      font-size:13px;
+    }
+
+    .features{
+      margin:0;
+      padding:0;
+      list-style:none;
+      display:grid;
+      gap:11px;
+    }
+
+    .features li{
+      display:grid;
+      grid-template-columns:19px 1fr;
+      gap:9px;
+      color:var(--ink-2);
+      font-size:13px;
+    }
+
+    .check{
+      width:19px;
+      height:19px;
+      border-radius:50%;
+      display:grid;
+      place-items:center;
+      background:#10281e;
+      color:var(--good);
+      font-size:11px;
+      font-weight:900;
+    }
+
+    .plan-foot{
+      margin-top:auto;
+      padding-top:22px;
+    }
+
+    .meta{
+      margin-bottom:13px;
+      color:var(--ink-3);
+      font-size:11px;
+    }
+
+    .cta{
+      width:100%;
+    }
+
+    .compare{
+      padding:20px 0 80px;
+    }
+
+    .section-head{
+      text-align:center;
+      margin-bottom:28px;
+    }
+
+    .section-head h2{
+      margin:13px 0 8px;
+      font-size:clamp(28px,4vw,44px);
+      line-height:1.02;
+      letter-spacing:-.045em;
+    }
+
+    .section-head p{
+      margin:0 auto;
+      max-width:670px;
+      color:var(--ink-3);
+    }
+
+    .table-wrap{
+      overflow:auto;
+      background:var(--surface);
+      border:1px solid var(--rule);
+      border-radius:18px;
+    }
+
+    table{
+      width:100%;
+      min-width:860px;
+      border-collapse:collapse;
+    }
+
+    th,td{
+      padding:15px 16px;
+      border-bottom:1px solid var(--rule);
+      text-align:left;
+      font-size:13px;
+    }
+
+    th{
+      color:var(--ink-3);
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.07em;
+      background:var(--surface-2);
+    }
+
+    tr:last-child td{border-bottom:0}
+
+    .yes{
+      color:var(--good);
+      font-weight:800;
+    }
+
+    .faq{
+      padding:10px 0 90px;
+    }
+
+    .faq-grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:12px;
+    }
+
+    details{
+      background:var(--surface);
+      border:1px solid var(--rule);
+      border-radius:16px;
+      padding:18px 20px;
+    }
+
+    summary{
+      cursor:pointer;
+      font-weight:750;
+      list-style:none;
+    }
+
+    summary::-webkit-details-marker{display:none}
+
+    details p{
+      margin:12px 0 0;
+      color:var(--ink-3);
+      font-size:13px;
+    }
+
+    .roadmap{
+      margin-bottom:90px;
+      padding:30px;
+      border-radius:22px;
+      background:linear-gradient(135deg,#17151c,#31232a);
+      color:#fff;
+    }
+
+    .roadmap h2{
+      margin:0 0 8px;
+      font-size:30px;
+      letter-spacing:-.04em;
+    }
+
+    .roadmap p{
+      margin:0;
+      color:rgba(255,255,255,.68);
+      max-width:740px;
+    }
+
+    .roadmap-grid{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:10px;
+      margin-top:22px;
+    }
+
+    .roadmap-item{
+      padding:14px;
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:14px;
+      background:rgba(255,255,255,.05);
+      font-size:12px;
+      color:rgba(255,255,255,.84);
+    }
+
+    footer{
+      border-top:1px solid var(--rule);
+      padding:28px 0 44px;
+      color:var(--ink-3);
+      font-size:12px;
+    }
+
+    .foot{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:20px;
+    }
+
+    @media(max-width:1050px){
+      .plans{grid-template-columns:repeat(2,1fr)}
+      .roadmap-grid{grid-template-columns:repeat(2,1fr)}
+    }
+
+    @media(max-width:700px){
+      .wrap{width:min(calc(100% - 24px),var(--max))}
+      .navlinks{display:none}
+      .nav-actions .ghost{display:none}
+      .hero{padding:58px 0 38px}
+      .plans{grid-template-columns:1fr}
+      .plan{min-height:auto}
+      .faq-grid{grid-template-columns:1fr}
+      .roadmap-grid{grid-template-columns:1fr}
+      .foot{flex-direction:column;align-items:flex-start}
+    }
+  </style>
+
+<style>
+  body{
+    background:
+      radial-gradient(circle at 15% 0%,rgba(237,59,120,.10),transparent 30%),
+      radial-gradient(circle at 85% 10%,rgba(120,80,180,.08),transparent 28%),
+      #0b0a0f;
+    color:#f7f3f8;
+  }
+
+  .topbar{
+    background:rgba(11,10,15,.86);
+    border-bottom-color:#2d2835;
+  }
+
+  .navlinks{color:#9e96a8}
+  .navlinks a:hover{color:#f7f3f8}
+
+  .nav-actions .btn.ghost{
+    color:#f7f3f8;
+    border-color:#3a3442;
+  }
+
+  .pricing-hero{padding-bottom:34px}
+
+  .pricing-hero h1{
+    max-width:900px;
+  }
+
+  .pricing-switch{
+    margin:30px auto 0;
+    display:inline-flex;
+    gap:4px;
+    padding:4px;
+    background:#121017;
+    border:1px solid #2d2835;
+    border-radius:999px;
+  }
+
+  .mode-btn{
+    padding:10px 18px;
+    border-radius:999px;
+    color:#9e96a8;
+    font-size:13px;
+    font-weight:800;
+  }
+
+  .mode-btn:hover{
+    color:#fff;
+  }
+
+  .mode-btn.active{
+    background:#ed3b78;
+    color:#fff;
+  }
+
+  .mode-heading,
+  .section-head{
+    text-align:center;
+  }
+
+  .mode-heading{
+    max-width:760px;
+    margin:18px auto 30px;
+  }
+
+  .mode-heading h2,
+  .section-head h2,
+  .enterprise-hero h2,
+  .enterprise-pricing h3,
+  .pricing-choice h2{
+    letter-spacing:-.045em;
+  }
+
+  .mode-heading h2,
+  .section-head h2{
+    margin:12px 0 8px;
+    font-size:clamp(30px,4vw,48px);
+    line-height:1.02;
+  }
+
+  .mode-heading p,
+  .section-head p{
+    color:#9e96a8;
+    max-width:700px;
+    margin:0 auto;
+  }
+
+  .plans{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:16px;
+    padding:0 0 34px;
+  }
+
+  .plan,
+  .enterprise-card,
+  .enterprise-pricing,
+  .pricing-choice,
+  details,
+  .table-wrap{
+    background:#121017;
+    border-color:#2d2835;
+  }
+
+  .plan{
+    min-height:620px;
+    box-shadow:0 18px 55px rgba(0,0,0,.28);
+  }
+
+  .plan.featured{
+    border-color:#ed3b78;
+    box-shadow:0 0 0 3px #351524,0 18px 55px rgba(237,59,120,.12);
+  }
+
+  .desc,
+  .meta,
+  .enterprise-card p,
+  .enterprise-pricing p,
+  .pricing-choice p,
+  details p{
+    color:#9e96a8;
+  }
+
+  .features li,
+  .enterprise-card li{
+    color:#d0c9d5;
+  }
+
+  .check{
+    background:#10281e;
+    color:#40c98a;
+  }
+
+  .brand-note{
+    margin:0 0 72px;
+    padding:18px 20px;
+    border:1px solid #2d2835;
+    border-radius:16px;
+    color:#aaa2b1;
+    background:#100e14;
+    font-size:13px;
+  }
+
+  .compare,
+  .faq{
+    padding:0 0 76px;
+  }
+
+  .table-wrap{
+    overflow:auto;
+    border-radius:18px;
+  }
+
+  table{background:#121017}
+  th{
+    background:#1a1720;
+    color:#9e96a8;
+    border-bottom-color:#2d2835;
+  }
+  td{border-bottom-color:#2d2835;color:#d0c9d5}
+
+  .roadmap{display:none}
+
+  .enterprise-hero{
+    text-align:center;
+    max-width:850px;
+    margin:10px auto 45px;
+  }
+
+  .enterprise-hero h2{
+    margin:16px auto 12px;
+    font-size:clamp(38px,6vw,64px);
+    line-height:1;
+  }
+
+  .enterprise-hero p{
+    max-width:700px;
+    margin:0 auto;
+    color:#9e96a8;
+    font-size:16px;
+  }
+
+  .enterprise-actions{
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-top:25px;
+  }
+
+  .enterprise-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:16px;
+    margin-bottom:25px;
+  }
+
+  .enterprise-card{
+    padding:26px;
+    border:1px solid #2d2835;
+    border-radius:20px;
+  }
+
+  .enterprise-card h3{
+    margin:16px 0 8px;
+    font-size:23px;
+    letter-spacing:-.035em;
+  }
+
+  .enterprise-card ul{
+    list-style:none;
+    padding:0;
+    margin:18px 0 0;
+    display:grid;
+    gap:10px;
+  }
+
+  .enterprise-card li{
+    position:relative;
+    padding-left:20px;
+    font-size:13px;
+  }
+
+  .enterprise-card li::before{
+    content:"✓";
+    position:absolute;
+    left:0;
+    color:#40c98a;
+    font-weight:900;
+  }
+
+  .enterprise-pricing{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:30px;
+    padding:28px;
+    border:1px solid #3a3442;
+    border-radius:20px;
+    margin-bottom:72px;
+  }
+
+  .enterprise-pricing h3{
+    margin:13px 0 7px;
+    font-size:28px;
+  }
+
+  .enterprise-price{
+    min-width:220px;
+    display:grid;
+    gap:5px;
+    justify-items:end;
+  }
+
+  .enterprise-price strong{
+    font-size:43px;
+    letter-spacing:-.05em;
+  }
+
+  .enterprise-price span{
+    color:#9e96a8;
+    font-size:12px;
+    margin-bottom:12px;
+  }
+
+  .pricing-choice{
+    margin:0 auto 80px;
+    padding:25px 28px;
+    border:1px solid #2d2835;
+    border-radius:20px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:25px;
+  }
+
+  .pricing-choice h2{
+    margin:10px 0 6px;
+    font-size:26px;
+  }
+
+  .faq-grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:12px;
+  }
+
+  details summary{color:#f7f3f8}
+
+  footer{
+    border-top-color:#2d2835;
+    color:#766f80;
+  }
+
+  footer a:hover{color:#f7f3f8}
+
+  .pricing-mode{display:none}
+  body.mode-choose .pricing-mode{display:none}
+  body.mode-brand .pricing-mode[data-mode="brand"]{display:block}
+  body.mode-enterprise .pricing-mode[data-mode="enterprise"]{display:block}
+
+  @media(max-width:1000px){
+    .plans{grid-template-columns:1fr}
+    .enterprise-grid{grid-template-columns:1fr}
+    .enterprise-pricing{align-items:flex-start;flex-direction:column}
+    .enterprise-price{justify-items:start}
+  }
+
+  @media(max-width:700px){
+    .pricing-hero h1{font-size:42px}
+    .pricing-switch{width:100%;justify-content:stretch}
+    .mode-btn{flex:1;text-align:center}
+    .faq-grid{grid-template-columns:1fr}
+    .pricing-choice{flex-direction:column;align-items:flex-start}
+    .enterprise-hero h2{font-size:40px}
+  }
+</style>
+
+
+<style>
+  .enterprise-simple-hero{
+    max-width:760px;
+    margin:18px auto 40px;
+    text-align:center;
+  }
+
+  .enterprise-simple-hero h2{
+    margin:15px 0 12px;
+    font-size:clamp(42px,6vw,68px);
+    line-height:.98;
+    letter-spacing:-.055em;
+  }
+
+  .enterprise-simple-hero p{
+    max-width:650px;
+    margin:0 auto;
+    color:#9e96a8;
+    font-size:16px;
+  }
+
+  .enterprise-simple{
+    display:grid;
+    grid-template-columns:minmax(320px,.9fr) 1.1fr;
+    gap:16px;
+    align-items:stretch;
+  }
+
+  .enterprise-main-card{
+    padding:32px;
+    border:1px solid #3a3442;
+    border-radius:24px;
+    background:
+      radial-gradient(circle at top right,rgba(237,59,120,.12),transparent 45%),
+      #121017;
+    display:flex;
+    flex-direction:column;
+    min-height:390px;
+  }
+
+  .mini-label{
+    font-size:10px;
+    letter-spacing:.12em;
+    font-weight:800;
+    color:#ed3b78;
+  }
+
+  .enterprise-main-card h3{
+    margin:14px 0 8px;
+    font-size:38px;
+    letter-spacing:-.045em;
+  }
+
+  .enterprise-lead{
+    margin:0;
+    max-width:440px;
+    color:#9e96a8;
+    line-height:1.7;
+  }
+
+  .enterprise-price{
+    margin-top:auto;
+    margin-bottom:24px;
+    display:grid;
+    gap:4px;
+  }
+
+  .enterprise-price strong{
+    font-size:45px;
+    line-height:1;
+    letter-spacing:-.055em;
+  }
+
+  .enterprise-price span{
+    color:#8f8799;
+    font-size:12px;
+  }
+
+  .enterprise-cta{
+    width:max-content;
+  }
+
+  .enterprise-features{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+
+  .enterprise-features article{
+    padding:23px;
+    border:1px solid #2d2835;
+    border-radius:20px;
+    background:#121017;
+    display:flex;
+    gap:15px;
+    align-items:flex-start;
+  }
+
+  .feature-icon{
+    width:34px;
+    height:34px;
+    flex:0 0 34px;
+    display:grid;
+    place-items:center;
+    border:1px solid #3a3442;
+    border-radius:10px;
+    color:#ed3b78;
+    font-size:10px;
+    font-weight:800;
+  }
+
+  .enterprise-features h4{
+    margin:1px 0 6px;
+    font-size:16px;
+    letter-spacing:-.02em;
+  }
+
+  .enterprise-features p{
+    margin:0;
+    color:#91899b;
+    font-size:12px;
+    line-height:1.6;
+  }
+
+  .enterprise-bottom{
+    margin-top:16px;
+    padding:17px 20px;
+    border-top:1px solid #2d2835;
+    display:flex;
+    justify-content:space-between;
+    gap:20px;
+    color:#777080;
+    font-size:11px;
+  }
+
+  .enterprise-bottom a{
+    color:#ed3b78;
+    font-weight:700;
+  }
+
+  .enterprise-bottom a:hover{
+    color:#ff6797;
+  }
+
+  @media(max-width:850px){
+    .enterprise-simple{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media(max-width:620px){
+    .enterprise-features{
+      grid-template-columns:1fr;
+    }
+
+    .enterprise-main-card{
+      min-height:auto;
+    }
+
+    .enterprise-bottom{
+      flex-direction:column;
+    }
+
+    .enterprise-simple-hero h2{
+      font-size:43px;
+    }
+  }
+</style>
+
+
+<style>
+  .agency-plans{
+    grid-template-columns:repeat(3,1fr);
+    margin-bottom:22px;
+  }
+
+  .agency-desc{
+    color:#9e96a8;
+    font-size:13px;
+    line-height:1.5;
+    min-height:42px;
+    margin-top:9px;
+  }
+
+  .billing-note{
+    color:#766f80;
+    font-size:10px;
+    margin:7px 0 22px;
+  }
+
+  .features small.coming{
+    display:inline-block;
+    margin-left:5px;
+    padding:2px 5px;
+    border:1px solid #403743;
+    border-radius:999px;
+    color:#9a91a2;
+    font-size:8px;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+  }
+
+  .features .check.soon{
+    background:#211b25;
+    color:#ed3b78;
+  }
+
+  .agency-note{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:25px;
+    margin:18px 0 70px;
+    padding:25px 28px;
+    border:1px solid #2d2835;
+    border-radius:20px;
+    background:#121017;
+  }
+
+  .agency-note h3{
+    margin:12px 0 6px;
+    font-size:24px;
+    letter-spacing:-.035em;
+  }
+
+  .agency-note p{
+    margin:0;
+    color:#9e96a8;
+    max-width:650px;
+    font-size:13px;
+  }
+
+  @media(max-width:1000px){
+    .agency-plans{
+      grid-template-columns:1fr;
+    }
+  }
+
+  @media(max-width:700px){
+    .agency-note{
+      flex-direction:column;
+      align-items:flex-start;
+    }
+  }
+</style>
+
+
+<style>
+  .pricing-overview{
+    display:block;
+    padding-bottom:85px;
+  }
+
+  body.mode-brand .pricing-overview,
+  body.mode-enterprise .pricing-overview{
+    display:none;
+  }
+
+  .overview-plans{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:14px;
+    margin-top:30px;
+  }
+
+  .overview-card{
+    position:relative;
+    padding:24px;
+    min-height:390px;
+    border:1px solid #2d2835;
+    border-radius:20px;
+    background:#121017;
+    display:flex;
+    flex-direction:column;
+  }
+
+  .overview-card.featured{
+    border-color:#ed3b78;
+    box-shadow:0 0 0 3px #351524;
+  }
+
+  .overview-ribbon{
+    position:absolute;
+    top:16px;
+    right:16px;
+    padding:4px 7px;
+    border-radius:999px;
+    background:#351524;
+    color:#ed3b78;
+    font-size:8px;
+    font-weight:900;
+    letter-spacing:.08em;
+  }
+
+  .overview-type{
+    color:#ed3b78;
+    font-size:9px;
+    font-weight:900;
+    letter-spacing:.12em;
+  }
+
+  .overview-card h3{
+    margin:12px 0 8px;
+    font-size:25px;
+    letter-spacing:-.04em;
+  }
+
+  .overview-price{
+    font-size:34px;
+    font-weight:800;
+    letter-spacing:-.05em;
+  }
+
+  .overview-price small{
+    color:#8f8799;
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:0;
+  }
+
+  .overview-card p{
+    color:#9e96a8;
+    font-size:12px;
+    line-height:1.6;
+    margin:10px 0 18px;
+  }
+
+  .overview-card ul{
+    list-style:none;
+    padding:0;
+    margin:0 0 22px;
+    display:grid;
+    gap:8px;
+    color:#d0c9d5;
+    font-size:12px;
+  }
+
+  .overview-card li{
+    padding-left:17px;
+    position:relative;
+  }
+
+  .overview-card li::before{
+    content:"✓";
+    position:absolute;
+    left:0;
+    color:#40c98a;
+    font-weight:900;
+  }
+
+  .overview-card .btn{
+    margin-top:auto;
+  }
+
+  .audience-choice{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+    margin-top:18px;
+  }
+
+  .audience-card{
+    padding:26px;
+    border:1px solid #2d2835;
+    border-radius:20px;
+    background:#121017;
+    transition:.18s ease;
+  }
+
+  .audience-card:hover{
+    border-color:#514858;
+    transform:translateY(-2px);
+  }
+
+  .audience-card h3{
+    margin:13px 0 7px;
+    font-size:24px;
+    letter-spacing:-.035em;
+  }
+
+  .audience-card p{
+    color:#9e96a8;
+    font-size:13px;
+    max-width:500px;
+    margin:0 0 15px;
+  }
+
+  .audience-link{
+    color:#ed3b78;
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .overview-note{
+    margin-top:16px;
+    padding:14px 18px;
+    border:1px solid #2d2835;
+    border-radius:14px;
+    color:#777080;
+    font-size:11px;
+    text-align:center;
+    background:#100e14;
+  }
+
+  @media(max-width:1100px){
+    .overview-plans{
+      grid-template-columns:repeat(2,1fr);
+    }
+  }
+
+  @media(max-width:650px){
+    .overview-plans,
+    .audience-choice{
+      grid-template-columns:1fr;
+    }
+  }
+</style>
+
+</head>
+
+<body>
+  <header class="topbar">
+    <div class="wrap nav">
+      <a href="/" class="brand">
+        <span class="brand-mark">tS</span>
+        <span>trySearch</span>
+      </a>
+
+      <nav class="navlinks" aria-label="Primary navigation">
+        <a href="/">Home</a>
+        <a href="/#engines">Engines</a>
+        <a href="/#method">Method</a>
+        <a href="/pricing">Pricing</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="/login" class="btn ghost">Log in</a>
+        <a href="/register" class="btn">Start free</a>
+      </div>
+    </div>
+  </header>
+
+  
+<main>
+
+  <section class="hero pricing-hero">
+    <div class="wrap">
+      <span class="eyebrow" id="pricing-eyebrow">trySearch pricing</span>
+      <h1 id="pricing-title">Choose how you want to use trySearch.</h1>
+      <p id="pricing-subtitle">
+        Choose a plan for your own brand or explore enterprise options for agencies,
+        larger teams and custom-volume programs.
+      </p>
+
+      <div class="pricing-switch" role="tablist" aria-label="Pricing audience">
+        <a href="/pricing?brand" data-mode-link="brand" class="mode-btn">For Brands</a>
+        <a href="/pricing?enterprise" data-mode-link="enterprise" class="mode-btn">For Enterprise</a>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ===================== PRICING OVERVIEW ===================== -->
+  <section class="pricing-overview" data-mode="choose">
+    <div class="wrap">
+
+      <div class="mode-heading">
+        <span class="eyebrow">Plans</span>
+        <h2>Simple pricing for every stage.</h2>
+        <p>
+          Start with your own brand, grow your visibility program, or manage
+          AI search visibility across multiple clients.
+        </p>
+      </div>
+
+      <div class="overview-plans">
+
+        <article class="overview-card">
+          <span class="overview-type">FREE</span>
+          <h3>Free Trial</h3>
+          <div class="overview-price">$0 <small>14 days</small></div>
+          <p>Explore trySearch before choosing a paid plan.</p>
+          <ul>
+            <li>25 tracked prompts</li>
+            <li>Visibility scan</li>
+            <li>Website audit</li>
+            <li>Citations &amp; evidence</li>
+          </ul>
+          <a href="/register" class="btn ghost">Start free</a>
+        </article>
+
+        <article class="overview-card">
+          <span class="overview-type">BRAND</span>
+          <h3>Starter</h3>
+          <div class="overview-price">$149 <small>/ month</small></div>
+          <p>For teams starting a structured AI visibility program.</p>
+          <ul>
+            <li>1 workspace</li>
+            <li>100 tracked prompts</li>
+            <li>Weekly runs</li>
+            <li>Scheduled reports</li>
+          </ul>
+          <a href="/pricing?brand" class="btn ghost">View brand plans</a>
+        </article>
+
+        <article class="overview-card featured">
+          <span class="overview-ribbon">POPULAR</span>
+          <span class="overview-type">BRAND</span>
+          <h3>Growth</h3>
+          <div class="overview-price">$449 <small>/ month</small></div>
+          <p>For larger recurring AEO measurement programs.</p>
+          <ul>
+            <li>3 workspaces</li>
+            <li>400 tracked prompts</li>
+            <li>Runs every 3 days</li>
+            <li>Unlimited seats</li>
+          </ul>
+          <a href="/pricing?brand" class="btn">Explore Growth</a>
+        </article>
+
+        <article class="overview-card">
+          <span class="overview-type">AGENCY</span>
+          <h3>Launch</h3>
+          <div class="overview-price">$250 <small>/ month</small></div>
+          <p>For solo operators and smaller agency offerings.</p>
+          <ul>
+            <li>200 tracked prompts / model</li>
+            <li>5 projects</li>
+            <li>200 audits / month</li>
+            <li>White-label reports</li>
+          </ul>
+          <a href="/pricing?enterprise" class="btn ghost">View agency plans</a>
+        </article>
+
+      </div>
+
+      <div class="audience-choice">
+
+        <a href="/pricing?brand" class="audience-card">
+          <span class="eyebrow">For Brands</span>
+          <h3>Grow your own AI visibility.</h3>
+          <p>
+            Track your brand, prompts, citations, competitors and website health.
+          </p>
+          <span class="audience-link">View Brand Pricing →</span>
+        </a>
+
+        <a href="/pricing?enterprise" class="audience-card">
+          <span class="eyebrow">For Agencies</span>
+          <h3>Run AI visibility for your clients.</h3>
+          <p>
+            Manage projects, client brands, reporting and larger prompt volumes.
+          </p>
+          <span class="audience-link">View Agency Pricing →</span>
+        </a>
+
+      </div>
+
+      <div class="overview-note">
+        <span>14-day free trial · No card required · Additional AI engines are being added to the production measurement layer.</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== BRAND PRICING ===================== -->
+  <section class="pricing-mode" data-mode="brand">
+    <div class="wrap">
+
+      <div class="mode-heading">
+        <span class="eyebrow">Brand plans</span>
+        <h2>AI visibility for your own brand.</h2>
+        <p>
+          Start small, measure your visibility, inspect citations and evidence,
+          and increase your tracked prompt volume as your program grows.
+        </p>
+      </div>
+
+      <div class="plans brand-plans">
+
+        <article class="plan">
+          <p class="plan-name">Free Trial</p>
+          <div class="price">
+            <strong>$0</strong>
+            <span>14 days</span>
+          </div>
+          <p class="desc">
+            Explore the core trySearch workflow before subscribing.
+          </p>
+
+          <ul class="features">
+            <li><span class="check">✓</span><span>25 tracked prompts</span></li>
+            <li><span class="check">✓</span><span>Perplexity-based visibility scan</span></li>
+            <li><span class="check">✓</span><span>Website technical audit</span></li>
+            <li><span class="check">✓</span><span>Evidence and citation inspection</span></li>
+            <li><span class="check">✓</span><span>Basic visibility metrics</span></li>
+            <li><span class="check">✓</span><span>No card required</span></li>
+          </ul>
+
+          <div class="plan-foot">
+            <div class="meta">14 days · no card</div>
+            <a href="/register" class="btn cta">Start free trial</a>
+          </div>
+        </article>
+
+        <article class="plan">
+          <p class="plan-name">Starter</p>
+          <div class="price">
+            <strong>$149</strong>
+            <span>/ month</span>
+          </div>
+          <p class="desc">
+            For teams beginning a structured AI visibility program.
+          </p>
+
+          <ul class="features">
+            <li><span class="check">✓</span><span>1 workspace</span></li>
+            <li><span class="check">✓</span><span>100 tracked prompts</span></li>
+            <li><span class="check">✓</span><span>Weekly runs</span></li>
+            <li><span class="check">✓</span><span>Visibility and citation analytics</span></li>
+            <li><span class="check">✓</span><span>Website audit and evidence</span></li>
+            <li><span class="check">✓</span><span>Scheduled reports</span></li>
+            <li><span class="check">✓</span><span>Extra engine capacity: +$29/mo</span></li>
+          </ul>
+
+          <div class="plan-foot">
+            <div class="meta">~1,300 responses/month target volume</div>
+            <a href="/register?plan=starter" class="btn cta">Choose Starter</a>
+          </div>
+        </article>
+
+        <article class="plan featured">
+          <span class="ribbon">Most popular</span>
+          <p class="plan-name">Growth</p>
+          <div class="price">
+            <strong>$449</strong>
+            <span>/ month</span>
+          </div>
+          <p class="desc">
+            For teams running a larger recurring AEO measurement program.
+          </p>
+
+          <ul class="features">
+            <li><span class="check">✓</span><span>3 workspaces</span></li>
+            <li><span class="check">✓</span><span>400 tracked prompts</span></li>
+            <li><span class="check">✓</span><span>Runs every 3 days</span></li>
+            <li><span class="check">✓</span><span>Multi-region and persona segments</span></li>
+            <li><span class="check">✓</span><span>Scheduled reports</span></li>
+            <li><span class="check">✓</span><span>Unlimited seats</span></li>
+            <li><span class="check">✓</span><span>Extra engine capacity: +$79/mo</span></li>
+          </ul>
+
+          <div class="plan-foot">
+            <div class="meta">~20,000 responses/month target volume</div>
+            <a href="/register?plan=growth" class="btn cta">Choose Growth</a>
+          </div>
+        </article>
+
+      </div>
+
+      <div class="brand-note">
+        <strong>Current production coverage:</strong>
+        Perplexity-based AI visibility measurement, website auditing,
+        citations/evidence, reporting and Search Console integration.
+        Additional AI engine adapters are being developed separately.
+      </div>
+
+      <div class="compare">
+        <div class="section-head">
+          <span class="eyebrow">Brand comparison</span>
+          <h2>Compare your options.</h2>
+          <p>Choose the level of prompt volume and monitoring cadence you need.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Free Trial</th>
+                <th>Starter</th>
+                <th>Growth</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Tracked prompts</td><td>25</td><td>100</td><td>400</td></tr>
+              <tr><td>Visibility measurement</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>Website audit</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>Citations &amp; evidence</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>Search Console</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>Run cadence</td><td>Trial</td><td>Weekly</td><td>Every 3 days</td></tr>
+              <tr><td>Workspaces</td><td>1</td><td>1</td><td>3</td></tr>
+              <tr><td>Seats</td><td>1</td><td>Included</td><td>Unlimited</td></tr>
+              <tr><td>Reports</td><td>Basic</td><td>Scheduled</td><td>Scheduled</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="faq">
+        <div class="section-head">
+          <span class="eyebrow">Brand FAQ</span>
+          <h2>Before you start.</h2>
+        </div>
+
+        <div class="faq-grid">
+          <details>
+            <summary>Can I start without a credit card?</summary>
+            <p>Yes. The current trial is designed to start without a card.</p>
+          </details>
+
+          <details>
+            <summary>Can I upgrade later?</summary>
+            <p>Yes. The account and plan structure can support moving from a smaller brand program to higher prompt volume.</p>
+          </details>
+
+          <details>
+            <summary>Are all AI engines already live?</summary>
+            <p>The current production measurement layer is centered on Perplexity. Additional engine adapters are being developed and should only be advertised once verified.</p>
+          </details>
+
+          <details>
+            <summary>Is online checkout active?</summary>
+            <p>The pricing page is ready for checkout integration. Payment collection still needs to be connected to the billing provider.</p>
+          </details>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================== ENTERPRISE PRICING ===================== -->
+
+
+  <section class="pricing-mode" data-mode="enterprise">
+    <div class="wrap">
+
+      <div class="enterprise-simple-hero">
+        <span class="eyebrow">Agency pricing</span>
+        <h2>Built for agencies managing AI visibility for multiple clients.</h2>
+        <p>
+          Scale from a small client portfolio to a white-label enterprise program
+          with higher prompt volume, more projects and custom reporting.
+        </p>
+      </div>
+
+      <div class="plans agency-plans">
+
+        <article class="plan">
+          <p class="plan-name">Launch</p>
+
+          <div class="agency-desc">
+            For solo operators and small agency offerings
+          </div>
+
+          <div class="price">
+            <strong>$250</strong>
+            <span>/ month</span>
+          </div>
+
+          <div class="billing-note">
+            Monthly · yearly billing coming soon
+          </div>
+
+          <ul class="features">
+            <li><span class="check">✓</span><span>200 tracked prompts / model</span></li>
+            <li><span class="check">✓</span><span>Pitch prompts</span></li>
+            <li><span class="check">✓</span><span>200 audits / month</span></li>
+            <li><span class="check">✓</span><span>20 articles / month</span></li>
+            <li><span class="check">✓</span><span>5 projects</span></li>
+            <li><span class="check">✓</span><span>Create reports</span></li>
+            <li><span class="check soon">~</span><span>MCP <small class="coming">Coming soon</small></span></li>
+            <li><span class="check soon">~</span><span>Looker Studio <small class="coming">Coming soon</small></span></li>
+            <li><span class="check">✓</span><span>White-label reports</span></li>
+            <li><span class="check soon">~</span><span>API access <small class="coming">Coming soon</small></span></li>
+          </ul>
+
+          <div class="plan-foot">
+            <div class="meta">14-day trial · no card required</div>
+            <a href="/register?audience=agency&plan=launch"
+               class="btn cta">
+              Try it free
+            </a>
+          </div>
+        </article>
+
+        <article class="plan featured">
+          <span class="ribbon">Popular</span>
+
+          <p class="plan-name">Growth</p>
+
+          <div class="agency-desc">
+            For growing agencies with several clients
+          </div>
+
+          <div class="price">
+            <strong>$400</strong>
+            <span>/ month</span>
+          </div>
+
+          <div class="billing-note">
+            Monthly · yearly billing coming soon
+          </div>
+
+          <ul class="features">
+            <li><span class="check">✓</span><span>500 tracked prompts / model</span></li>
+            <li><span class="check">✓</span><span>Pitch prompts</span></li>
+            <li><span class="check">✓</span><span>1,000 audits / month</span></li>
+            <li><span class="check">✓</span><span>80 articles / month</span></li>
+            <li><span class="check">✓</span><span>10 projects</span></li>
+            <li><span class="check">✓</span><span>Specialized agency cohort training</span></li>
+            <li><span class="check">✓</span><span>Create reports</span></li>
+            <li><span class="check soon">~</span><span>MCP <small class="coming">Coming soon</small></span></li>
+            <li><span class="check soon">~</span><span>Looker Studio <small class="coming">Coming soon</small></span></li>
+            <li><span class="check">✓</span><span>White-label reports</span></li>
+            <li><span class="check soon">~</span><span>API access <small class="coming">Coming soon</small></span></li>
+          </ul>
+
+          <div class="plan-foot">
+            <div class="meta">Higher prompt and project capacity</div>
+            <a href="/register?audience=agency&plan=growth"
+               class="btn cta">
+              Try it free
+            </a>
+          </div>
+        </article>
+
+        <article class="plan">
+          <p class="plan-name">Enterprise Agencies</p>
+
+          <div class="agency-desc">
+            For independent agencies with white-label needs
+          </div>
+
+          <div class="price">
+            <strong>$999</strong>
+            <span>/ month</span>
+          </div>
+
+          <div class="billing-note">
+            Monthly · custom commercial terms
+          </div>
+
+          <ul class="features">
+            <li><span class="check">✓</span><span>1,250 tracked prompts / model</span></li>
+            <li><span class="check">✓</span><span>Pitch prompts</span></li>
+            <li><span class="check">✓</span><span>3,000 audits / month</span></li>
+            <li><span class="check">✓</span><span>200 articles / month</span></li>
+            <li><span class="check">✓</span><span>Unlimited projects</span></li>
+            <li><span class="check">✓</span><span>Specialized agency cohort training</span></li>
+            <li><span class="check">✓</span><span>Create reports</span></li>
+            <li><span class="check soon">~</span><span>MCP <small class="coming">Coming soon</small></span></li>
+            <li><span class="check soon">~</span><span>Looker Studio <small class="coming">Coming soon</small></span></li>
+            <li><span class="check">✓</span><span>White-label reports</span></li>
+            <li><span class="check soon">~</span><span>API access <small class="coming">Coming soon</small></span></li>
+            <li><span class="check soon">~</span><span>Platform white-label <small class="coming">Coming soon</small></span></li>
+          </ul>
+
+          <div class="plan-foot">
+            <div class="meta">Custom onboarding and enterprise planning</div>
+            <a href="mailto:sales@trysearch.com?subject=trySearch%20Agency%20Enterprise"
+               class="btn cta">
+              Talk to sales
+            </a>
+          </div>
+        </article>
+
+      </div>
+
+
+      <section class="compare agency-compare">
+        <div class="section-head">
+          <span class="eyebrow">Compare agency plans</span>
+          <h2>Choose the right level for your client portfolio.</h2>
+          <p>Compare prompt volume, projects, reporting and agency capacity.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Launch</th>
+                <th>Growth</th>
+                <th>Enterprise Agencies</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Tracked prompts / model</td><td>200</td><td>500</td><td>1,250</td></tr>
+              <tr><td>Pitch prompts</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>Audits / month</td><td>200</td><td>1,000</td><td>3,000</td></tr>
+              <tr><td>Articles / month</td><td>20</td><td>80</td><td>200</td></tr>
+              <tr><td>Projects</td><td>5</td><td>10</td><td>Unlimited</td></tr>
+              <tr><td>Specialized agency cohort training</td><td>—</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>Create reports</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>White-label reports</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>MCP</td><td>Coming soon</td><td>Coming soon</td><td>Coming soon</td></tr>
+              <tr><td>Looker Studio</td><td>Coming soon</td><td>Coming soon</td><td>Coming soon</td></tr>
+              <tr><td>API access</td><td>Coming soon</td><td>Coming soon</td><td>Coming soon</td></tr>
+              <tr><td>Platform white-label</td><td>—</td><td>—</td><td>Coming soon</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="faq agency-faq">
+        <div class="section-head">
+          <span class="eyebrow">Agency FAQ</span>
+          <h2>Before you start.</h2>
+        </div>
+
+        <div class="faq-grid">
+
+          <details>
+            <summary>Can I start without a credit card?</summary>
+            <p>
+              Yes. The agency plans are designed with a 14-day trial path before
+              a paid subscription is required.
+            </p>
+          </details>
+
+          <details>
+            <summary>Can I move from Launch to Growth later?</summary>
+            <p>
+              Yes. You can move to a higher agency capacity as your client
+              portfolio, prompt volume and reporting requirements increase.
+            </p>
+          </details>
+
+          <details>
+            <summary>Can I manage multiple client projects?</summary>
+            <p>
+              Yes. Launch includes 5 projects, Growth includes 10 and Enterprise
+              Agencies is structured for unlimited projects.
+            </p>
+          </details>
+
+          <details>
+            <summary>Are MCP, Looker Studio and API access live?</summary>
+            <p>
+              These integrations are part of the product roadmap and are marked
+              Coming soon until their production integrations are deployed and verified.
+            </p>
+          </details>
+
+          <details>
+            <summary>Can agencies use white-label reports?</summary>
+            <p>
+              White-label reporting is part of the agency product structure,
+              with deeper platform-level white-label functionality planned separately.
+            </p>
+          </details>
+
+          <details>
+            <summary>Can Enterprise Agencies use custom requirements?</summary>
+            <p>
+              Yes. Enterprise is intended for larger prompt volume, client portfolios,
+              reporting requirements and custom commercial arrangements.
+            </p>
+          </details>
+
+        </div>
+      </section>
+
+      <section class="pricing-choice agency-choice">
+        <div>
+          <span class="eyebrow">Not sure?</span>
+          <h2>Start with Launch and scale with your agency.</h2>
+          <p>
+            Begin with a smaller client portfolio and move to Growth or Enterprise
+            as your AI visibility program expands.
+          </p>
+        </div>
+
+        <div class="choice-actions">
+          <a href="/pricing?brand" class="btn ghost">View brand pricing</a>
+          <a href="/register?audience=agency&plan=launch" class="btn">Start Launch</a>
+        </div>
+      </section>
+
+      <div class="agency-note">
+        <div>
+          <span class="eyebrow">Agency program</span>
+          <h3>One platform for your client portfolio.</h3>
+          <p>
+            Organize client brands, prompts, evidence, audits and reports through
+            workspaces as your agency program grows.
+          </p>
+        </div>
+
+        <a href="mailto:sales@trysearch.com?subject=trySearch%20Agency%20Pricing"
+           class="btn ghost">
+          Discuss agency requirements
+        </a>
+      </div>
+
+    </div>
+  </section>
+
+
+
+
+</main>
+
+
+  <footer>
+    <div class="wrap foot">
+      <div>© 2026 trySearch</div>
+      <div>
+        <a href="/">Home</a>
+        &nbsp;·&nbsp;
+        <a href="/login">Login</a>
+        &nbsp;·&nbsp;
+        <a href="/register">Start free</a>
+      </div>
+    </div>
+  </footer>
+
+<script>
+(function(){
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.has('enterprise') ? 'enterprise' : (params.has('brand') ? 'brand' : 'choose');
+
+  document.body.classList.add('mode-' + mode);
+
+  const eyebrow = document.getElementById('pricing-eyebrow');
+  const title = document.getElementById('pricing-title');
+  const subtitle = document.getElementById('pricing-subtitle');
+
+  if(mode === 'brand'){
+    eyebrow.textContent = 'Brand pricing';
+    title.textContent = 'Measure how your brand appears in AI search.';
+    subtitle.textContent = 'Choose the prompt volume and monitoring cadence that fits your brand.';
+  }else if(mode === 'enterprise'){
+    eyebrow.textContent = 'Enterprise pricing';
+    title.textContent = 'AI visibility infrastructure for larger programs.';
+    subtitle.textContent = 'Custom scale, client rollups, reporting and enterprise planning.';
+  }else{
+    eyebrow.textContent = 'trySearch pricing';
+    title.textContent = 'Choose how you want to use trySearch.';
+    subtitle.textContent = 'Choose a plan for your own brand or explore enterprise options.';
+  }
+
+  document.querySelectorAll('[data-mode-link]').forEach(link => {
+    link.classList.toggle('active', link.dataset.modeLink === mode);
+  });
+})();
+</script>
+
+</body>
+</html>
