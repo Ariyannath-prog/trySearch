@@ -1,9 +1,4 @@
 {
-  "buildCommand": "alembic upgrade head"
-}
-
-
-{
   "rewrites": [
     {
       "source": "/pricing",
