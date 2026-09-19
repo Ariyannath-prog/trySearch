@@ -1,3 +1,13 @@
 {
   "buildCommand": "alembic upgrade head"
 }
+
+
+{
+  "rewrites": [
+    {
+      "source": "/pricing",
+      "destination": "/pricing.html"
+    }
+  ]
+}
