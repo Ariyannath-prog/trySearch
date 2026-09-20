@@ -1,4 +1,22 @@
 {
+  "buildCommand": "alembic upgrade head",
+  "redirects": [
+    {
+      "source": "/pricing",
+      "destination": "/pricing?brand",
+      "permanent": false,
+      "missing": [
+        {
+          "type": "query",
+          "key": "brand"
+        },
+        {
+          "type": "query",
+          "key": "enterprise"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/pricing",

@@ -7,6 +7,7 @@
   <meta name="description" content="See whether ChatGPT, Gemini, Perplexity and Claude mention your brand when buyers ask. Tracked prompts, real citations, and a visibility score that shows its confidence interval.">
   <meta name="theme-color" content="#ff7f11">
   <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="trySearch">
   <link rel="icon" type="image/x-icon" href="trysearch-logo.png">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -448,7 +449,7 @@ details p{margin:0 0 17px;font-size:13.5px;color:var(--ink-2);max-width:78ch;lin
 .cta{border:1px solid var(--brand-edge);border-radius:var(--r);
   background:linear-gradient(160deg,var(--brand-wash),var(--surface) 62%);
   padding:clamp(26px,4.5vw,52px);display:flex;flex-direction:column;gap:18px;align-items:flex-start}
-footer{border-top:1px solid var(--rule);padding:42px 0 32px;background:var(--surface)}
+body > footer,#site > footer{border-top:1px solid var(--rule);padding:42px 0 32px;background:var(--surface)}
 .footgrid{display:grid;grid-template-columns:1.7fr repeat(3,1fr);gap:26px}
 .footcol{display:flex;flex-direction:column;gap:9px;font-size:13px;color:var(--ink-3)}
 .footcol a:hover{color:var(--ink)}
@@ -1028,30 +1029,19 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
 
 <section class="hero" id="top" data-act="0">
   <div class="wrap heroin stag" id="heroStag">
-    <span class="eyebrow">Answer engine optimisation</span>
     <h1>Your competitors are<br>reporting <em>NOISE</em>.</h1>
-    <p class="lede" style="color: rgb(255, 255, 255);">AI answers change every time you ask. Most visibility tools take one sample, average
-      it, and draw you a green arrow. trysearch publishes its formula, states its interval, and tells you
-      when nothing measurable happened &mdash; which is roughly a third of the time.</p>
     <div class="heroctas">
       <button class="btn lg mag" data-goto="onboard">Run a free scan</button>
       <button class="btn ghost lg mag" data-goto="app">Open the dashboard &nearr;</button>
     </div>
     <div class="killers"><b>No card</b><span>·</span><b>No signup</b><span>·</span>
       <b>About a minute</b></div>
-    <div class="heromet">
-      <div class="hm"><b class="cnt" data-to="3">0</b><span>fixed engines in every plan</span></div>
-      <div class="hm"><b class="cnt" data-to="8" data-suffix="+">0</b><span>engines available as add-ons</span></div>
-      <div class="hm"><b class="cnt" data-to="0.6" data-dec="1" data-prefix="&plusmn;">0</b><span>points on the monthly figure</span></div>
-      <div class="hm"><b>0</b><span>scores with a hidden formula</span></div>
-    </div>
   </div>
 </section>
 
 <section class="sec" id="problem" data-act="1">
   <div class="wrap">
     <div class="sechead rv">
-      <span class="eyebrow">The measurement problem</span>
       <h2>Three engines. One question.<br>Three different answers.</h2>
     </div>
     <div class="story">
@@ -1094,7 +1084,6 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
 <section class="sec" style="padding-top:0" data-act="1">
   <div class="wrap">
     <div class="sechead rv">
-      <span class="eyebrow">Try it yourself</span>
       <h2>One run is an anecdote.<br>Press the button and watch why.</h2>
       <p class="lede">A real sampler. Each run draws from a fixed underlying truth &mdash; the model names
         Kestrel 73.3% of the time &mdash; exactly as a live scan would. This is what our <b>variance
@@ -1178,7 +1167,6 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
 <section class="sec" id="product" data-act="2">
   <div class="wrap">
     <div class="sechead rv">
-      <span class="eyebrow">The product, not a screenshot</span>
       <h2>This is the real thing. Click it.</h2>
       <p class="lede">Not a video, not an image with a play button. The dashboard below runs in this page
         &mdash; switch tabs, change the matrix metric, expand a fan-out. When you want the whole
@@ -1216,7 +1204,6 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
 <section class="sec" id="engines" data-act="2">
   <div class="wrap">
     <div class="sechead rv">
-      <span class="eyebrow">Engines</span>
       <h2>Three engines on every plan.<br>Two more you choose on Growth.</h2>
       <p class="lede">Every plan runs the same fixed three &mdash; <b>ChatGPT, Google and
         Perplexity</b> &mdash; because they are the cheapest to query, the only ones reachable by official
@@ -1230,10 +1217,10 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
           <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path
             d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4"
             stroke-linecap="round"/></svg></button><span class="spacer"></span>
-        <span class="slotbar"><span class="slotpips" id="slotPips"></span>
-          <span id="slotState">3 of 3 slots</span></span></div>
-      <div class="pb"><div class="slots" id="slotGrid"></div></div>
-      <div class="pf"><span id="slotCost">No add-ons. Included in every plan.</span>
+        <span class="slotbar"><span class="slotpips" id="previewSlotPips"></span>
+          <span id="previewSlotState">3 of 3 slots</span></span></div>
+      <div class="pb"><div class="slots" id="previewSlotGrid"></div></div>
+      <div class="pf"><span id="previewSlotCost">No add-ons. Included in every plan.</span>
         <span class="spacer"></span>
         <span>Every engine is labelled with how its data is obtained &mdash; official API, grounded API,
           or licensed SERP vendor. Google is Gemini with Search grounding, not AI&nbsp;Overviews
@@ -1245,7 +1232,6 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
 <section class="sec" id="features" data-act="3">
   <div class="wrap">
     <div class="sechead rv">
-      <span class="eyebrow">Twelve surfaces</span>
       <h2>Everything the incumbents charge for.<br>Measured honestly.</h2>
       <p class="lede">Feature parity is the entry ticket, not the pitch &mdash; so each card names the
         competitors who already ship it. What differs is that every number arrives with its interval, and
@@ -1258,7 +1244,6 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
 <section class="sec" id="method" data-act="3">
   <div class="wrap">
     <div class="sechead rv" style="margin-bottom:26px">
-      <span class="eyebrow">Method</span>
       <h2>We publish our maths.<br>Ask the others for theirs.</h2>
       <p class="lede">In this category the same word means different arithmetic at every vendor. One says
         visibility and means presence; another ships a 0&ndash;100 composite and never publishes the
@@ -1292,40 +1277,15 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
         <div class="pf"><span>Sentiment is deliberately <b>outside</b> the score &mdash; extraction
           confidence is lowest there, so it is reported separately on a &minus;100&hellip;+100 scale.</span></div>
       </div>
-      <dl class="panel rv" style="padding:6px 20px;margin:0">
-        <div class="defrow"><dt>Share of voice</dt>
-          <dd>Your mentions over all tracked-brand mentions, <b>weighted by prompt demand</b>. Unweighted
-            SoV is inflated by tracking prompts nobody asks. Ours cannot be.</dd></div>
-        <div class="defrow"><dt>Retrieved vs cited</dt>
-          <dd>Two metrics, never merged. <code>Retrieved</code> = the model was given your page.
-            <code>Cited</code> = it named it. The gap is usually where the work is.</dd></div>
-        <div class="defrow"><dt>Confidence interval</dt>
-          <dd>Wilson score interval over the period's answers, printed on the figure. At 650 answers that
-            is <code>±3.6 pts</code>; at 27,000, <code>±0.6</code>.</dd></div>
-        <div class="defrow"><dt>Minimum sample</dt>
-          <dd>No score below <b>86 answers</b> for a ±10-point claim, or <b>345</b> for ±5. Under that you
-            get <code>collecting data</code>, not a number.</dd></div>
-        <div class="defrow"><dt>&ldquo;No measurable change&rdquo;</dt>
-          <dd>Rendered whenever this period's interval overlaps the previous one. We would rather tell you
-            nothing happened than sell you a green arrow.</dd></div>
-        <div class="defrow"><dt>Variance probe</dt>
-          <dd>Ten prompts &times; five runs, weekly, so single-prompt volatility is measured rather than
-            assumed. Costs us about <code>$6/mo</code>. It is why we can quote an interval at all.</dd></div>
-        <div class="defrow"><dt>Absent, three ways</dt>
-          <dd><code>not yet run</code>, <code>run and absent</code>, <code>too few runs to say</code> —
-            plus <code>engine not in your slots</code>, which is a fourth and never shown as 0%.</dd></div>
-        <div class="defrow"><dt>Data provenance</dt>
-          <dd>Every engine column carries its source: <code>API</code>, <code>grounded API</code>, or
-            <code>SERP vendor</code>. Google is Gemini-with-grounding until a vendor is added.</dd></div>
-      </dl>
     </div>
   </div>
 </section>
 
 <section class="sec" id="proof" data-act="4">
   <div class="wrap">
-    <div class="sechead rv"><span class="eyebrow">Customers</span>
-      <h2>Teams who got tired of guessing</h2></div>
+    <div class="sechead rv">
+      <h2>Teams who got tired of guessing</h2>
+    </div>
     <div class="logowall rv" style="margin-bottom:18px">
       <div>Northbeam</div><div>Ardent Labs</div><div>Corvid</div>
       <div>Halden &amp; Co</div><div>Fieldnote</div><div>Perigee</div></div>
@@ -1364,7 +1324,6 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
 
     <div class="rv home-faq" style="margin-top:36px">
       <div class="home-faq-head">
-        <span class="eyebrow">Good to know</span>
         <h3>Questions people actually ask</h3>
       </div>
       <div class="home-faq-grid">
@@ -1416,8 +1375,6 @@ pre{margin:0;background:var(--surface-2);border:1px solid var(--rule);border-rad
         minute, no card, no signup. The competitor and prompt sets are yours to reject; a wrong
         competitor set makes every downstream number meaningless.</p></details>      </div>
     </div>
-  </div>
-</section>
 
 <section class="sec" style="padding-top:0" data-act="4">
   <div class="wrap">
@@ -2223,12 +2180,12 @@ function slotState(){
     : P().free
       ? `Three fixed, plus ${P().free} you choose and can swap any time. No add-ons.`
       : 'Three fixed engines. Extra engines are $'+P().addonPrice+'/mo each.';
-  ['slotPips','obPips'].forEach(id=>{const el=$('#'+id); if(el) el.innerHTML=pipsH;});
-  ['slotState','obSlotState'].forEach(id=>{const el=$('#'+id); if(el) el.textContent=txt;});
-  ['slotCost','obSlotCost'].forEach(id=>{const el=$('#'+id); if(el) el.innerHTML=cost;});
+  ['previewSlotPips','slotPips','obPips'].forEach(id=>{const el=$('#'+id); if(el) el.innerHTML=pipsH;});
+  ['previewSlotState','slotState','obSlotState'].forEach(id=>{const el=$('#'+id); if(el) el.textContent=txt;});
+  ['previewSlotCost','slotCost','obSlotCost'].forEach(id=>{const el=$('#'+id); if(el) el.innerHTML=cost;});
 }
 function paintSlots(){
-  ['slotGrid','obSlots'].forEach(id=>{const el=$('#'+id); if(el) el.innerHTML=slotHTML();});
+  ['previewSlotGrid','slotGrid','obSlots'].forEach(id=>{const el=$('#'+id); if(el) el.innerHTML=slotHTML();});
   slotState(); wireTilt();
   $$('[data-slot]').forEach(b=>b.addEventListener('click',()=>{
     const i=+b.dataset.slot, k=slotKind(i);
@@ -2302,6 +2259,10 @@ function readURL(){
 function setMode(m,v){
   mode=m; if(v) view=v;
   $('#site').hidden=m!=='site'; $('#onb').hidden=m!=='onboard'; $('#app').hidden=m!=='app';
+  const orphanCta=document.querySelector('body > section.sec[data-act="4"]');
+  const orphanFooter=document.querySelector('body > footer');
+  if(orphanCta) orphanCta.hidden=m!=='site';
+  if(orphanFooter) orphanFooter.hidden=m!=='site';
   cv.style.display=(m==='app'||!glOK)?'none':'block';
   cv.style.opacity=m==='onboard'?0.26:stageOpacity;
   const h=document.documentElement, prev=h.style.scrollBehavior;
@@ -4614,8 +4575,8 @@ scrollAct();
 }
 </style>
 
-</body>
-</html>
+
+
 <style id="trysearch-home-faq-v3">
 #site .home-faq-grid{
   width:min(100%,1040px);
@@ -4681,24 +4642,6 @@ scrollAct();
 @media (max-width:699px){
   #site .home-faq{
     margin-bottom:44px !important;
-  }
-}
-</style>
-
-<style id="trysearch-concierge-width-v1">
-#site > .cta{
-  width:min(calc(100% - 32px),1040px);
-  margin-left:auto !important;
-  margin-right:auto !important;
-  border-radius:16px;
-  padding:28px;
-}
-
-@media (max-width:699px){
-  #site > .cta{
-    width:calc(100% - 28px);
-    padding:22px 18px;
-    border-radius:14px;
   }
 }
 </style>
@@ -4982,3 +4925,500 @@ scrollAct();
   }
 }
 </style>
+
+<style id="trysearch-home-faq-final">
+.home-faq{
+  margin-top:36px !important;
+  margin-bottom:64px !important;
+}
+.home-faq-head{
+  text-align:center;
+  margin:0 auto 20px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:8px;
+}
+.home-faq-head h3{
+  font-size:clamp(28px,3.4vw,38px) !important;
+  line-height:1.05;
+  letter-spacing:-.045em;
+}
+.home-faq-grid{
+  width:min(100%,1040px) !important;
+  margin:0 auto !important;
+  display:grid !important;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  gap:12px !important;
+}
+.home-faq-grid details{
+  margin:0 !important;
+  padding:0 !important;
+  border:1px solid var(--rule) !important;
+  border-radius:14px !important;
+  background:var(--surface) !important;
+  overflow:hidden;
+}
+.home-faq-grid details:hover{
+  border-color:var(--rule-2) !important;
+  transform:translateY(-1px);
+}
+.home-faq-grid details[open]{
+  border-color:var(--brand-edge) !important;
+}
+.home-faq-grid summary{
+  min-height:58px !important;
+  padding:14px 17px !important;
+  border:0 !important;
+  display:flex !important;
+  align-items:center;
+  gap:14px;
+  color:var(--ink) !important;
+  font-size:13px !important;
+  font-weight:600;
+  line-height:1.4;
+  cursor:pointer;
+}
+.home-faq-grid summary::after{
+  content:'+' !important;
+  margin-left:auto;
+  width:22px;
+  height:22px;
+  flex:0 0 22px;
+  display:grid;
+  place-items:center;
+  border:1px solid var(--rule);
+  border-radius:50%;
+  color:var(--ink-3);
+  font-family:var(--font-data);
+}
+.home-faq-grid details[open] summary::after{
+  content:'−' !important;
+  color:var(--brand);
+  border-color:var(--brand-edge);
+  background:var(--brand-wash);
+}
+.home-faq-grid details p{
+  margin:0 !important;
+  padding:0 17px 17px !important;
+  color:var(--ink-2) !important;
+  font-size:12.5px !important;
+  line-height:1.6;
+  max-width:none;
+}
+@media(max-width:699px){
+  .home-faq{
+    margin-top:28px !important;
+    margin-bottom:44px !important;
+  }
+  .home-faq-grid{
+    width:calc(100% - 36px) !important;
+    max-width:340px !important;
+    grid-template-columns:1fr !important;
+    gap:9px !important;
+  }
+  .home-faq-grid summary{
+    min-height:56px !important;
+    padding:14px !important;
+    font-size:13px !important;
+  }
+  .home-faq-grid details p{
+    padding:0 14px 16px !important;
+    font-size:12.5px !important;
+  }
+}
+@media(max-width:360px){
+  .home-faq-grid{
+    width:calc(100% - 24px) !important;
+    max-width:320px !important;
+  }
+}
+</style>
+
+<style id="trysearch-formula-responsive">
+/* Center the Visibility Score formula box */
+#method > .wrap > .cols.c2{
+  display:flex !important;
+  justify-content:center !important;
+  width:100% !important;
+}
+
+#method > .wrap > .cols.c2 > .panel{
+  width:100% !important;
+  max-width:900px !important;
+  margin:0 auto !important;
+}
+
+/* Formula stays readable on narrow screens */
+#method > .wrap > .cols.c2 > .panel pre{
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+  white-space:pre;
+  font-size:clamp(11px,2vw,14px);
+  line-height:1.55;
+}
+
+/* Definition rows */
+#method > .wrap > .cols.c2 > .panel .kv{
+  width:100%;
+  max-width:100%;
+}
+
+/* Worked-example cards */
+#method > .wrap > .cols.c2 > .panel .vsparts{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+
+/* Result */
+#method > .wrap > .cols.c2 > .panel .bignum{
+  text-align:center;
+}
+
+/* Mobile */
+@media (max-width:699px){
+  #method > .wrap > .cols.c2{
+    padding-left:12px;
+    padding-right:12px;
+  }
+
+  #method > .wrap > .cols.c2 > .panel{
+    max-width:100% !important;
+  }
+
+  #method > .wrap > .cols.c2 > .panel .kv{
+    grid-template-columns:1fr !important;
+    gap:5px 0;
+  }
+
+  #method > .wrap > .cols.c2 > .panel .kv dt{
+    margin-top:8px;
+  }
+
+  #method > .wrap > .cols.c2 > .panel .vsparts{
+    grid-template-columns:1fr !important;
+  }
+}
+</style>
+
+<style id="trysearch-formula-line-responsive">
+#method > .wrap > .cols.c2 > .panel pre{
+  white-space:nowrap !important;
+  overflow-x:auto;
+  font-size:clamp(11px,1.4vw,14px);
+  line-height:1.5;
+}
+
+@media (max-width:699px){
+  #method > .wrap > .cols.c2 > .panel pre{
+    white-space:pre-wrap !important;
+    overflow-x:visible !important;
+    word-break:normal;
+    overflow-wrap:anywhere;
+  }
+}
+</style>
+
+<style id="trysearch-method-intro-center">
+#method > .wrap > .sechead{
+  max-width:820px !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  text-align:center !important;
+  align-items:center !important;
+}
+
+#method > .wrap > .sechead .lede{
+  max-width:760px !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+
+@media (max-width:699px){
+  #method > .wrap > .sechead{
+    width:100% !important;
+    padding:0 12px;
+  }
+}
+</style>
+
+<style id="trysearch-method-lede-left">
+#method > .wrap > .sechead{
+  align-items:center !important;
+}
+
+#method > .wrap > .sechead .lede{
+  width:min(760px,100%) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  text-align:left !important;
+}
+</style>
+
+<style id="trysearch-proof-responsive">
+/* =========================
+   Customers / proof section
+   ========================= */
+
+#proof > .wrap{
+  max-width:920px !important;
+  margin:0 auto !important;
+  padding-left:20px !important;
+  padding-right:20px !important;
+}
+
+#proof > .wrap > h2{
+  text-align:center;
+  font-size:clamp(26px,3vw,36px) !important;
+  margin-bottom:22px;
+}
+
+/* Logo/company grid */
+#proof .logowall{
+  width:min(100%,820px) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  gap:8px !important;
+}
+
+#proof .logowall > div{
+  min-height:44px !important;
+  padding:10px 12px !important;
+  display:flex !important;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  font-size:12px !important;
+}
+
+/* Statistics */
+#proof .statband{
+  width:min(100%,820px) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  display:grid !important;
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:8px !important;
+}
+
+#proof .statband > div{
+  min-width:0 !important;
+  padding:13px 10px !important;
+  text-align:center;
+}
+
+#proof .statband b{
+  font-size:20px !important;
+  line-height:1.05 !important;
+}
+
+#proof .statband span{
+  display:block;
+  margin-top:4px;
+  font-size:10.5px !important;
+  line-height:1.35 !important;
+}
+
+/* Testimonials */
+#proof > .cols.c2{
+  width:min(100%,820px) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  gap:10px !important;
+}
+
+#proof .quote{
+  padding:16px !important;
+  font-size:12px !important;
+  line-height:1.55 !important;
+}
+
+#proof .quote p{
+  font-size:12.5px !important;
+  line-height:1.6 !important;
+  margin:0;
+}
+
+#proof .quote footer{
+  margin-top:10px;
+  font-size:10px !important;
+}
+
+/* =========================
+   Concierge
+   ========================= */
+
+#site > .cta.rv[style*="margin-top:22px"]{
+  width:min(calc(100% - 40px),760px) !important;
+  margin:24px auto 48px !important;
+  padding:20px !important;
+  text-align:center;
+}
+
+#site > .cta.rv[style*="margin-top:22px"] h3{
+  font-size:20px !important;
+}
+
+#site > .cta.rv[style*="margin-top:22px"] p{
+  max-width:62ch !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  font-size:12.5px !important;
+  line-height:1.55 !important;
+}
+
+#site > .cta.rv[style*="margin-top:22px"] .btn{
+  margin-top:4px;
+}
+
+/* =========================
+   Tablet
+   ========================= */
+
+@media (max-width:899px){
+  #proof .statband{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+
+  #proof .logowall{
+    grid-template-columns:repeat(3,minmax(0,1fr)) !important;
+  }
+}
+
+/* =========================
+   Mobile
+   ========================= */
+
+@media (max-width:699px){
+  #proof > .wrap{
+    padding-left:14px !important;
+    padding-right:14px !important;
+  }
+
+  #proof > .wrap > h2{
+    font-size:27px !important;
+    line-height:1.08 !important;
+    margin-bottom:18px;
+  }
+
+  #proof .logowall{
+    width:100% !important;
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    gap:7px !important;
+  }
+
+  #proof .logowall > div{
+    min-height:40px !important;
+    padding:8px !important;
+    font-size:11px !important;
+  }
+
+  #proof .statband{
+    width:100% !important;
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+    gap:7px !important;
+  }
+
+  #proof .statband > div{
+    padding:11px 8px !important;
+  }
+
+  #proof .statband b{
+    font-size:18px !important;
+  }
+
+  #proof .statband span{
+    font-size:10px !important;
+  }
+
+  #proof > .cols.c2{
+    width:100% !important;
+    grid-template-columns:1fr !important;
+    gap:8px !important;
+  }
+
+  #proof .quote{
+    padding:14px !important;
+  }
+
+  #site > .cta.rv[style*="margin-top:22px"]{
+    width:calc(100% - 28px) !important;
+    margin:20px auto 40px !important;
+    padding:17px !important;
+  }
+}
+</style>
+
+<style id="trysearch-concierge-original-final">
+#site > .cta.rv[style*="margin-top:22px"]{
+  width:min(1000px,calc(100% - 32px)) !important;
+  max-width:1200px !important;
+  margin:22px auto 48px !important;
+  padding:22px !important;
+
+  border:1px solid var(--brand-edge) !important;
+  border-radius:20px var(--r) !important;
+  background:
+  linear-gradient(
+    135deg,
+    rgba(219,74,128,.22) 0%,
+    rgba(251,234,241,.14) 28%,
+    rgba(23,22,29,.62) 70%,
+    rgba(23,22,29,.48) 100%
+  ) !important;
+
+backdrop-filter:blur(18px) saturate(140%) !important;
+-webkit-backdrop-filter:blur(18px) saturate(140%) !important;
+
+box-shadow:
+  inset 0 1px 0 rgba(255,255,255,.14),
+  inset 0 0 35px rgba(219,74,128,.07),
+  0 12px 32px rgba(0,0,0,.16) !important;
+
+opacity:1 !important;
+
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:flex-start !important;
+  text-align:left !important;
+  gap:18px !important;
+}
+
+#site > .cta.rv[style*="margin-top:22px"] .eyebrow{
+  margin:0 !important;
+}
+
+#site > .cta.rv[style*="margin-top:22px"] h3{
+  margin:0 !important;
+  font-size:21px !important;
+  line-height:1.2 !important;
+}
+
+#site > .cta.rv[style*="margin-top:22px"] p{
+  width:100% !important;
+  max-width:70ch !important;
+  margin:0 !important;
+  font-size:13px !important;
+  line-height:1.55 !important;
+  color:var(--ink-2) !important;
+}
+
+#site > .cta.rv[style*="margin-top:22px"] .btn{
+  margin:0 !important;
+}
+
+@media(max-width:699px){
+  #site > .cta.rv[style*="margin-top:22px"]{
+    width:calc(100% - 28px) !important;
+    max-width:none !important;
+    margin:20px auto 40px !important;
+    padding:18px !important;
+  }
+}
+</style>
+</body>
+</html>
