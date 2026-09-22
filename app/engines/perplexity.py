@@ -10,10 +10,10 @@ from app.extraction.mentions import evidence_url
 from app.http_client import ProviderAPIError, external_json_request
 from app.utils import normalise_domain
 
-def call_perplexity_search(prompt, region=None):
-    api_key = os.environ.get('PERPLEXITY_API_KEY')
+def call_perplexity_search(prompt, region=None, api_key=None):
+    api_key = api_key or os.environ.get('PERPLEXITY_API_KEY')
     if not api_key:
-        raise ProviderAPIError('PERPLEXITY_API_KEY is not configured.')
+        raise ProviderAPIError('No Perplexity provider credential is configured.')
     max_results = max(1, min(int(os.environ.get('PERPLEXITY_MAX_RESULTS', '10')), 20))
     payload = {
         'query': prompt, 'max_results': max_results,
@@ -26,10 +26,10 @@ def call_perplexity_search(prompt, region=None):
         headers={'Authorization': f'Bearer {api_key}'}, timeout=45,
     )
 
-def call_perplexity_answer(prompt):
-    api_key = os.environ.get('PERPLEXITY_API_KEY')
+def call_perplexity_answer(prompt, api_key=None):
+    api_key = api_key or os.environ.get('PERPLEXITY_API_KEY')
     if not api_key:
-        raise ProviderAPIError('PERPLEXITY_API_KEY is not configured.')
+        raise ProviderAPIError('No Perplexity provider credential is configured.')
     payload = external_json_request(
         'https://api.perplexity.ai/v1/agent', method='POST',
         headers={'Authorization': f'Bearer {api_key}'}, timeout=60,
@@ -156,12 +156,20 @@ class PerplexityAdapter:
         return self.UNIT_COST
 
     @guard
-    def run(self, prompt, *, region=None, timeout_s=60):
+    def run(self, prompt, *, region=None, timeout_s=60, credential=None):
         import time
         started = time.monotonic()
 
-        search_payload = call_perplexity_search(prompt, region)
-        answer_payload = call_perplexity_answer(prompt)
+        if credential:
+            search_payload = call_perplexity_search(
+                prompt, region, api_key=credential
+            )
+            answer_payload = call_perplexity_answer(
+                prompt, api_key=credential
+            )
+        else:
+            search_payload = call_perplexity_search(prompt, region)
+            answer_payload = call_perplexity_answer(prompt)
         latency_ms = round((time.monotonic() - started) * 1000)
 
         answer_text = perplexity_answer_text(answer_payload or {})

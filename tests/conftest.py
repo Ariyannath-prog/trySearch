@@ -65,15 +65,32 @@ class NetworkAccessDenied(RuntimeError):
 
 @pytest.fixture(autouse=True)
 def database_schema():
-    """Guarantee the schema exists before each test, whatever ran before.
+    """Guarantee the schema exists and remove test-only engine rows between tests."""
+    from sqlalchemy import text
 
-    metadata.create_all is idempotent. This is belt-and-braces after a
-    tearDownClass calling engine.dispose() silently emptied the shared in-memory
-    database for every test that sorted after it.
-    """
     metadata.create_all(engine)
     _seed_engines()
+
+    # These rows are created by RegistryTableTests. Remove leftovers from a
+    # previous test invocation before and after each test so the suite is
+    # repeatable on the same dedicated test database.
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM engines "
+                "WHERE key IN ('future-engine', 'off-engine')"
+            )
+        )
+
     yield
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM engines "
+                "WHERE key IN ('future-engine', 'off-engine')"
+            )
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -159,16 +176,33 @@ def create_workspace(*, user_id, domain='example.com', brand_name='Example',
     """
     from datetime import datetime
 
-    from sqlalchemy import insert
+    from sqlalchemy import insert, select
 
     from app.db import engine as _engine
-    from app.models import memberships, organizations, workspaces
+    from app.models import memberships, organizations, users, workspaces
 
     now = created_at or datetime.utcnow()
     with _engine.begin() as conn:
+        existing_user = conn.execute(
+            select(users.c.id).where(users.c.id == user_id)
+        ).scalar_one_or_none()
+
+        if existing_user is None:
+            conn.execute(insert(users).values(
+                id=user_id,
+                username=f'testuser{user_id}',
+                email=f'testuser{user_id}@example.test',
+                password_hash='test-fixture-password',
+                created_at=now,
+                is_platform_admin=False,
+                is_active=True,
+                last_login_at=None,
+            ))
+
         org_id = conn.execute(insert(organizations).values(
             name=f'Org for {brand_name}', created_at=now,
         )).inserted_primary_key[0]
+
         conn.execute(insert(memberships).values(
             org_id=org_id, user_id=user_id, role='owner',
         ))

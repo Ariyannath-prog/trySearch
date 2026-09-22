@@ -21,7 +21,7 @@ from sqlalchemy import (
 )
 
 from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, Numeric
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 STRING_ARRAY = ARRAY(Text)
 
@@ -45,6 +45,9 @@ users = Table(
     Column('email', String(255), nullable=False, unique=True),
     Column('password_hash', String(255), nullable=False),
     Column('created_at', DateTime, nullable=False),
+    Column('is_platform_admin', Boolean, nullable=False, default=False),
+    Column('is_active', Boolean, nullable=False, default=True),
+    Column('last_login_at', DateTime, nullable=True),
 )
 
 app_metadata = Table(
@@ -572,6 +575,23 @@ metrics_daily = Table(
 )
 
 
+providers = Table(
+    'providers',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('key', String(80), nullable=False, unique=True),
+    Column('display_name', String(160), nullable=False),
+    Column('category', String(80), nullable=False, server_default='llm'),
+    Column('auth_type', String(40), nullable=False),
+    Column('base_url', String(2048), nullable=True),
+    Column('docs_url', String(2048), nullable=True),
+    Column('config', JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column('enabled', Boolean, nullable=False, default=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+)
+
+
 engines = Table(
     'engines',
     metadata,
@@ -583,6 +603,7 @@ engines = Table(
     Column('source_type', Text, nullable=False),
     Column('adapter_version', Text, nullable=False),
     Column('enabled', Boolean, nullable=False, default=True),
+    Column('provider_id', Integer, ForeignKey('providers.id', ondelete='SET NULL'), nullable=True),
     CheckConstraint("source_type IN ('api', 'scraper', 'serp_vendor')",
                     name='ck_engines_source_type'),
 )
@@ -613,4 +634,67 @@ report_shares = Table(
     Column('expires_at', DateTime, nullable=True),
     Column('created_at', DateTime, nullable=False),
     Column('revoked_at', DateTime, nullable=True),
+)
+
+
+# --- Platform administration -------------------------------------------------
+# Platform admins are separate from organization membership roles.
+# Secrets live in provider_credentials and are encrypted before storage.
+
+admin_audit_logs = Table(
+    'admin_audit_logs',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('actor_user_id', Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True, index=True),
+    Column('action', Text, nullable=False),
+    Column('target_type', String(80), nullable=True),
+    Column('target_id', String(120), nullable=True),
+    Column('details', JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column('ip_address', String(64), nullable=True),
+    Column('user_agent', Text, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Index('ix_admin_audit_logs_created_at', 'created_at'),
+    Index('ix_admin_audit_logs_target', 'target_type', 'target_id'),
+)
+
+
+provider_credentials = Table(
+    'provider_credentials',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('provider', String(80), nullable=False),
+    Column('provider_id', Integer, ForeignKey('providers.id', ondelete='SET NULL'), nullable=True, index=True),
+    Column('engine_id', Integer, ForeignKey('engines.id', ondelete='SET NULL'), nullable=True, index=True),
+    Column('label', String(160), nullable=False),
+    Column('encrypted_secret', Text, nullable=False),
+    Column('secret_hint', String(32), nullable=True),
+    Column('enabled', Boolean, nullable=False, default=True),
+    Column('last_tested_at', DateTime, nullable=True),
+    Column('last_error', Text, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+    UniqueConstraint('provider', 'label', name='uq_provider_credentials_provider_label'),
+)
+
+
+feature_flags = Table(
+    'feature_flags',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('key', String(160), nullable=False, unique=True),
+    Column('enabled', Boolean, nullable=False, default=False),
+    Column('config', JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+)
+
+
+system_settings = Table(
+    'system_settings',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('key', String(160), nullable=False, unique=True),
+    Column('value', Text, nullable=False, server_default=''),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
 )

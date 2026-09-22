@@ -1,0 +1,180 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}Users · trySearch Admin{% endblock %}
+
+{% block content %}
+<div class="top">
+  <div>
+    <div class="eyebrow">Administration</div>
+    <h1>Users</h1>
+    <div class="sub">Manage platform accounts and administrator access.</div>
+  </div>
+</div>
+
+<div class="panel" style="margin-bottom:18px">
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <input id="search" placeholder="Search username or email"
+      style="flex:1;min-width:220px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:#0e0c12;color:var(--text)">
+    <select id="status"
+      style="padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:#0e0c12;color:var(--text)">
+      <option value="all">All users</option>
+      <option value="active">Active</option>
+      <option value="disabled">Disabled</option>
+      <option value="admin">Platform admins</option>
+    </select>
+    <button id="refresh"
+      style="padding:11px 15px;border:1px solid var(--border);border-radius:10px;background:var(--panel2);color:var(--text);cursor:pointer">
+      Refresh
+    </button>
+  </div>
+</div>
+
+<div class="panel">
+  <div style="overflow:auto">
+    <table style="width:100%;border-collapse:collapse;min-width:900px">
+      <thead>
+        <tr style="text-align:left;color:var(--muted);font-size:11px">
+          <th style="padding:12px">User</th>
+          <th style="padding:12px">Status</th>
+          <th style="padding:12px">Admin</th>
+          <th style="padding:12px">Organizations</th>
+          <th style="padding:12px">Workspaces</th>
+          <th style="padding:12px">Created</th>
+          <th style="padding:12px">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div id="note" class="sub" style="margin-top:14px"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const rows = document.getElementById('rows');
+  const note = document.getElementById('note');
+  const search = document.getElementById('search');
+  const status = document.getElementById('status');
+
+  function esc(value){
+    return String(value ?? '').replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function buttonLabel(user){
+    return user.is_active ? 'Disable' : 'Enable';
+  }
+
+  async function load(){
+    note.textContent = 'Loading…';
+
+    const params = new URLSearchParams();
+    if(search.value.trim()) params.set('search', search.value.trim());
+    params.set('status', status.value);
+
+    const res = await fetch('/api/admin/users?' + params.toString(), {
+      credentials:'same-origin',
+      headers:{'Accept':'application/json'}
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+      throw new Error(data.error || 'Unable to load users');
+    }
+
+    rows.innerHTML = data.users.map(user => `
+      <tr style="border-top:1px solid var(--border)">
+        <td style="padding:13px">
+          <strong>${esc(user.username)}</strong>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${esc(user.email)}</div>
+        </td>
+        <td style="padding:13px">
+          <span class="status">
+            <span class="dot ${user.is_active ? 'good' : 'bad'}"></span>
+            ${user.is_active ? 'Active' : 'Disabled'}
+          </span>
+        </td>
+        <td style="padding:13px">${user.is_platform_admin ? 'Yes' : 'No'}</td>
+        <td style="padding:13px">${user.organization_count}</td>
+        <td style="padding:13px">${user.workspace_count}</td>
+        <td style="padding:13px">${esc(user.created_at)}</td>
+        <td style="padding:13px">
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <button
+              data-action="toggle-active"
+              data-id="${user.id}"
+              style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer">
+              ${buttonLabel(user)}
+            </button>
+            <button
+              data-action="toggle-admin"
+              data-id="${user.id}"
+              data-value="${user.is_platform_admin ? 'false' : 'true'}"
+              style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer">
+              ${user.is_platform_admin ? 'Remove admin' : 'Make admin'}
+            </button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+
+    note.textContent = `${data.count} user${data.count === 1 ? '' : 's'}.`;
+  }
+
+  async function updateUser(id, patch){
+    const res = await fetch('/api/admin/users/' + id, {
+      method:'PATCH',
+      credentials:'same-origin',
+      headers:{
+        'Content-Type':'application/json',
+        'Accept':'application/json'
+      },
+      body:JSON.stringify(patch)
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+      throw new Error(data.error || 'Update failed');
+    }
+  }
+
+  rows.addEventListener('click', async e => {
+    const button = e.target.closest('button[data-action]');
+    if(!button) return;
+
+    const id = button.dataset.id;
+
+    try{
+      button.disabled = true;
+
+      if(button.dataset.action === 'toggle-active'){
+        const currentlyActive = button.textContent.trim() === 'Disable';
+        await updateUser(id,{is_active:!currentlyActive});
+      }else{
+        await updateUser(id,{is_platform_admin:button.dataset.value === 'true'});
+      }
+
+      await load();
+    }catch(error){
+      note.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+
+  document.getElementById('refresh').addEventListener('click', load);
+  search.addEventListener('keydown', e => {
+    if(e.key === 'Enter') load().catch(err => note.textContent = err.message);
+  });
+  status.addEventListener('change', () => load().catch(err => note.textContent = err.message));
+
+  load().catch(err => {
+    note.textContent = err.message;
+  });
+})();
+</script>
+{% endblock %}

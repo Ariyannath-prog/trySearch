@@ -72,7 +72,7 @@ class EngineAdapter(Protocol):
     supports_citations: bool
     supports_regions: bool
 
-    def run(self, prompt, *, region=None, timeout_s=60) -> EngineResult:
+    def run(self, prompt, *, region=None, timeout_s=60, credential=None) -> EngineResult:
         ...
 
     def estimate_cost(self, prompt) -> Decimal:
@@ -90,10 +90,16 @@ def guard(fn):
     import time
 
     @functools.wraps(fn)
-    def wrapper(self, prompt, *, region=None, timeout_s=60):
+    def wrapper(self, prompt, *, region=None, timeout_s=60, credential=None):
         started = time.monotonic()
         try:
-            result = fn(self, prompt, region=region, timeout_s=timeout_s)
+            result = fn(
+                self,
+                prompt,
+                region=region,
+                timeout_s=timeout_s,
+                credential=credential,
+            )
         except BaseException as error:  # noqa: BLE001 - that is the entire point
             return EngineResult.failed(
                 f'{type(error).__name__}: {error}',

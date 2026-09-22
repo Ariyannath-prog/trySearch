@@ -30,12 +30,19 @@ from app import db
 from app.db import engine
 from app.models import contacts
 from app.utils import row_to_dict
+from app.admin_auth import require_platform_admin_page
 
 pages_bp = Blueprint('pages', __name__)
 
 @pages_bp.route('/')
 def index():
     return send_from_directory(BASE_DIR, 'index.html')
+
+@pages_bp.route('/pricing')
+def pricing_page():
+    if not request.args:
+        return redirect('/pricing?brand')
+    return send_from_directory(BASE_DIR, 'pricing.html')
 
 @pages_bp.route('/<path:path>')
 def static_files(path):
@@ -155,7 +162,7 @@ def login_page():
             const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
             const j=await res.json();
             const note=document.getElementById('note');
-            if(res.ok){ note.textContent='Logged in. Redirecting...'; setTimeout(()=>location.href='/profile',400); } else { note.textContent = j.error || 'Login failed'; }
+            if(res.ok){ note.textContent='Logged in. Redirecting...'; setTimeout(()=>location.href='/analytics',400); } else { note.textContent = j.error || 'Login failed'; }
           });
         </script>
       </body>
@@ -202,9 +209,9 @@ def register_page():
 
 @pages_bp.route('/admin/contacts')
 def admin_contacts():
-    # require login
-    if not session.get('user_id'):
-        return redirect('/login')
+    error = require_platform_admin_page()
+    if error:
+        return error
 
     with engine.connect() as conn:
         stmt = select(contacts.c.id, contacts.c.name, contacts.c.email, contacts.c.message, contacts.c.created_at).order_by(desc(contacts.c.created_at))

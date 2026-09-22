@@ -1,0 +1,272 @@
+{% extends "admin/layout.html" %}
+{% block title %}Engines · trySearch Admin{% endblock %}
+
+{% block head %}
+<style>
+  .engine-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
+  .engine-toolbar input,.engine-toolbar select{background:#0f0c14;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 13px;outline:none;font:inherit;font-size:12px}
+  .engine-toolbar input{flex:1;min-width:240px}
+  .engine-toolbar select{min-width:145px}
+  .btn{border:1px solid var(--border);background:#17131d;color:var(--text);border-radius:10px;padding:10px 14px;cursor:pointer;font:inherit;font-size:12px}
+  .btn:hover{border-color:#5d5068}
+  .btn.danger{border-color:rgba(255,105,127,.35);color:#ffabb8}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px}
+  .engine-table-wrap{overflow:auto}
+  .engine-table{width:100%;border-collapse:collapse;min-width:900px}
+  .engine-table th,.engine-table td{padding:13px 12px;border-bottom:1px solid var(--border);text-align:left;font-size:12px}
+  .engine-table th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+  .engine-table tbody tr{cursor:pointer}
+  .engine-table tbody tr:hover{background:#17131d}
+  .engine-name{font-weight:750}
+  .muted{color:var(--muted)}
+  .pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#211b28;color:#d8cddd;font-size:10px}
+  .pill.good{background:rgba(70,210,138,.1);color:#7ee8ae}
+  .pill.bad{background:rgba(255,105,127,.1);color:#ffabb8}
+  .pill.warn{background:rgba(237,59,120,.1);color:#ff91ba}
+  .detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .detail-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px}
+  .detail-card h3{margin:0 0 12px;font-size:14px}
+  .meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .meta-item{padding:10px;border:1px solid var(--border);border-radius:10px;background:#121018}
+  .meta-item .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .meta-item .v{margin-top:5px;font-size:12px;word-break:break-word}
+  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .error{padding:12px;border:1px solid rgba(255,105,127,.4);background:rgba(255,105,127,.08);color:#ffd0d8;border-radius:10px;font-size:12px}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+  @media(max-width:800px){.detail-grid{grid-template-columns:1fr}.meta-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top">
+  <div>
+    <div class="eyebrow">AI Infrastructure</div>
+    <h1>Engines</h1>
+    <div class="sub">Control the engines available to the platform and inspect adapter capabilities before enabling them for production workloads.</div>
+  </div>
+</div>
+
+<div class="engine-toolbar">
+  <input id="engineSearch" type="search" placeholder="Search engine, key, or source type">
+  <select id="engineStatus">
+    <option value="all">All statuses</option>
+    <option value="enabled">Enabled</option>
+    <option value="disabled">Disabled</option>
+  </select>
+  <button class="btn" id="refreshBtn">Refresh</button>
+</div>
+
+<div id="errorBox" class="error" style="display:none"></div>
+
+<div class="panel">
+  <div class="engine-table-wrap">
+    <table class="engine-table">
+      <thead>
+        <tr>
+          <th>Engine</th>
+          <th>Source</th>
+          <th>Adapter</th>
+          <th>Version</th>
+          <th>Status</th>
+          <th>Citations</th>
+          <th>Regions</th>
+        </tr>
+      </thead>
+      <tbody id="engineRows">
+        <tr><td colspan="7" class="empty">Loading engines…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section" id="detailSection" style="display:none">
+  <div class="top">
+    <div>
+      <div class="eyebrow">Engine detail</div>
+      <h2 id="detailTitle">Engine</h2>
+      <div class="sub" id="detailSubtitle"></div>
+    </div>
+    <button class="btn" id="closeDetail">Close</button>
+  </div>
+
+  <div id="detailError" class="error" style="display:none"></div>
+
+  <div class="detail-grid">
+    <div class="detail-card">
+      <h3>Engine metadata</h3>
+      <div class="meta-grid" id="metaGrid"></div>
+      <div class="detail-actions" id="detailActions"></div>
+    </div>
+
+    <div class="detail-card">
+      <h3>Adapter capabilities</h3>
+      <div class="meta-grid" id="capabilityGrid"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const rows = document.getElementById('engineRows');
+  const search = document.getElementById('engineSearch');
+  const status = document.getElementById('engineStatus');
+  const errorBox = document.getElementById('errorBox');
+  const detailSection = document.getElementById('detailSection');
+  const detailTitle = document.getElementById('detailTitle');
+  const detailSubtitle = document.getElementById('detailSubtitle');
+  const detailError = document.getElementById('detailError');
+  const metaGrid = document.getElementById('metaGrid');
+  const capabilityGrid = document.getElementById('capabilityGrid');
+  const detailActions = document.getElementById('detailActions');
+
+  const esc = (value) => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replace(/'/g, '&#039;');
+
+  function pill(text, cls=''){
+    return '<span class="pill ' + cls + '">' + esc(text) + '</span>';
+  }
+
+  async function loadEngines(){
+    errorBox.style.display = 'none';
+    rows.innerHTML = '<tr><td colspan="7" class="empty">Loading engines…</td></tr>';
+
+    try{
+      const params = new URLSearchParams();
+      if(search.value.trim()) params.set('search', search.value.trim());
+      if(status.value !== 'all') params.set('status', status.value);
+
+      const res = await fetch('/api/admin/engines?' + params.toString(), {
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load engines.');
+
+      if(!data.engines.length){
+        rows.innerHTML = '<tr><td colspan="7" class="empty">No engines found.</td></tr>';
+        return;
+      }
+
+      rows.innerHTML = data.engines.map(engine => `
+        <tr data-id="${engine.id}">
+          <td>
+            <div class="engine-name">${esc(engine.display_name)}</div>
+            <div class="muted">${esc(engine.key)} · #${engine.id}</div>
+          </td>
+          <td>${pill(engine.source_type)}</td>
+          <td>${engine.adapter_available ? pill('Available','good') : pill('Not registered','warn')}</td>
+          <td>${esc(engine.adapter_version)}</td>
+          <td>${engine.enabled ? pill('Enabled','good') : pill('Disabled','bad')}</td>
+          <td>${engine.supports_citations ? pill('Yes','good') : pill('No')}</td>
+          <td>${engine.supports_regions ? pill('Yes','good') : pill('No')}</td>
+        </tr>
+      `).join('');
+
+      rows.querySelectorAll('tr[data-id]').forEach(row => {
+        row.addEventListener('click', () => loadDetail(Number(row.dataset.id)));
+      });
+    }catch(err){
+      rows.innerHTML = '';
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
+    }
+  }
+
+  async function loadDetail(id){
+    detailError.style.display = 'none';
+    detailSection.style.display = 'block';
+    detailTitle.textContent = 'Loading…';
+    detailSubtitle.textContent = '';
+    metaGrid.innerHTML = '';
+    capabilityGrid.innerHTML = '';
+    detailActions.innerHTML = '';
+    detailSection.scrollIntoView({behavior:'smooth',block:'start'});
+
+    try{
+      const res = await fetch('/api/admin/engines/' + id, {
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load engine.');
+
+      const e = data.engine;
+      detailTitle.textContent = e.display_name;
+      detailSubtitle.textContent = e.key + ' · Engine #' + e.id;
+
+      metaGrid.innerHTML = [
+        ['Key', e.key],
+        ['Source type', e.source_type],
+        ['Adapter version', e.adapter_version],
+        ['Status', e.enabled ? 'Enabled' : 'Disabled'],
+        ['Adapter', e.adapter_available ? 'Registered' : 'Not registered'],
+        ['Unit cost', '$' + Number(e.estimated_unit_cost_usd || 0).toFixed(4)]
+      ].map(([k,v]) => `
+        <div class="meta-item">
+          <div class="k">${esc(k)}</div>
+          <div class="v">${esc(v)}</div>
+        </div>
+      `).join('');
+
+      capabilityGrid.innerHTML = [
+        ['Citations', e.supports_citations ? 'Supported' : 'Not supported'],
+        ['Regions', e.supports_regions ? 'Supported' : 'Not supported'],
+        ['Adapter registered', e.adapter_registered ? 'Yes' : 'No'],
+        ['Adapter available', e.adapter_available ? 'Yes' : 'No']
+      ].map(([k,v]) => `
+        <div class="meta-item">
+          <div class="k">${esc(k)}</div>
+          <div class="v">${esc(v)}</div>
+        </div>
+      `).join('');
+
+      detailActions.innerHTML = e.enabled
+        ? '<button class="btn danger" id="toggleEngine">Disable engine</button>'
+        : '<button class="btn" id="toggleEngine">Enable engine</button>';
+
+      document.getElementById('toggleEngine').addEventListener('click', async () => {
+        const next = !e.enabled;
+        const action = next ? 'enable' : 'disable';
+
+        if(!confirm('Are you sure you want to ' + action + ' ' + e.display_name + '?')) return;
+
+        const updateRes = await fetch('/api/admin/engines/' + id, {
+          method: 'PATCH',
+          credentials: 'same-origin',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({enabled: next})
+        });
+
+        const result = await updateRes.json();
+
+        if(!updateRes.ok){
+          alert(result.error || 'Engine update failed.');
+          return;
+        }
+
+        await loadEngines();
+        await loadDetail(id);
+      });
+    }catch(err){
+      detailError.textContent = err.message;
+      detailError.style.display = 'block';
+    }
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadEngines);
+  document.getElementById('closeDetail').addEventListener('click', () => {
+    detailSection.style.display = 'none';
+  });
+  search.addEventListener('keydown', (event) => {
+    if(event.key === 'Enter') loadEngines();
+  });
+  status.addEventListener('change', loadEngines);
+
+  loadEngines();
+})();
+</script>
+{% endblock %}

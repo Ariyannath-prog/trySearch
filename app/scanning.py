@@ -39,11 +39,25 @@ from app.extraction.pipeline import (
 )
 from app.extraction.mentions import domain_matches, project_brand_aliases, text_mentions_alias
 from app.http_client import ProviderAPIError
+from app.provider_credentials import decrypt_secret
 from app.jobs import update_analytics_job
 from app.llm import open_model_settings
 from app.metrics import provider_evidence_rows
 from app.utils import normalise_domain
-from app.models import engines as engines_table, analytics_answer_sources, analytics_audit_jobs, competitors, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_scan_schedules, analytics_topics, analytics_tracked_prompts
+from app.models import (
+    engines as engines_table,
+    provider_credentials,
+    analytics_answer_sources,
+    analytics_audit_jobs,
+    competitors,
+    analytics_content_opportunities,
+    workspaces,
+    analytics_prompt_scan_runs,
+    analytics_provider_answers,
+    analytics_scan_schedules,
+    analytics_topics,
+    analytics_tracked_prompts,
+)
 from app.recommendations import open_model_evidence_opportunities, rule_based_opportunities
 from app.routes.pages import index
 
@@ -107,7 +121,42 @@ def enabled_engines(conn):
     return pairs
 
 
-def run_with_retries(adapter, prompt, region, attempts=None):
+def credential_for_engine(conn, engine_row):
+    """Return decrypted runtime credential for one engine.
+
+    Prefer a credential explicitly linked to the engine. If none exists, fall
+    back to an enabled provider-level credential. Returning None is deliberate:
+    adapters may still support a temporary environment-variable fallback during
+    the migration to database-managed credentials.
+    """
+    exact = conn.execute(
+        select(provider_credentials).where(
+            (provider_credentials.c.enabled.is_(True)) &
+            (provider_credentials.c.engine_id == engine_row['id'])
+        ).order_by(provider_credentials.c.id.asc()).limit(1)
+    ).mappings().first()
+
+    row = exact
+
+    if row is None and engine_row.get('provider_id') is not None:
+        row = conn.execute(
+            select(provider_credentials).where(
+                (provider_credentials.c.enabled.is_(True)) &
+                (provider_credentials.c.provider_id == engine_row['provider_id']) &
+                (provider_credentials.c.engine_id.is_(None))
+            ).order_by(provider_credentials.c.id.asc()).limit(1)
+        ).mappings().first()
+
+    if not row:
+        return None
+
+    try:
+        return decrypt_secret(row['encrypted_secret'])
+    except Exception:
+        return None
+
+
+def run_with_retries(adapter, prompt, region, credential=None, attempts=None):
     """Retry an adapter call with jittered backoff.
 
     The adapter never raises, so retrying is driven by result.status rather than by
@@ -117,7 +166,11 @@ def run_with_retries(adapter, prompt, region, attempts=None):
     attempts = attempts or ANSWER_RETRY_ATTEMPTS
     result = None
     for attempt in range(1, attempts + 1):
-        result = adapter.run(prompt, region=region)
+        result = adapter.run(
+            prompt,
+            region=region,
+            credential=credential,
+        )
         if result.status != 'failed':
             return result
         if attempt < attempts:
@@ -216,10 +269,6 @@ def run_prompt_scan_job(job_id):
     if not project or not prompts:
         update_analytics_job(job_id, status='failed_terminal', progress=100, error='Add at least one active tracked prompt first.', completed_at=datetime.utcnow())
         return
-    if not os.environ.get('PERPLEXITY_API_KEY'):
-        update_analytics_job(job_id, status='failed_terminal', progress=100, error='PERPLEXITY_API_KEY is not configured.', completed_at=datetime.utcnow())
-        return
-
     with engine.connect() as conn:
         completed_run = conn.execute(select(
             analytics_prompt_scan_runs.c.status,
@@ -320,6 +369,11 @@ def run_prompt_scan_job(job_id):
 
     with engine.connect() as conn:
         engines_in_use = enabled_engines(conn)
+        runtime_credentials = {
+            engine_row['id']: credential_for_engine(conn, engine_row)
+            for engine_row, _adapter in engines_in_use
+        }
+
     if not engines_in_use:
         update_analytics_job(
             job_id, status='failed_terminal', progress=100,
@@ -340,7 +394,12 @@ def run_prompt_scan_job(job_id):
             for engine_row, adapter in engines_in_use:
                 started = time.monotonic()
                 errors = []
-                result = run_with_retries(adapter, prompt['prompt'], region)
+                result = run_with_retries(
+                    adapter,
+                    prompt['prompt'],
+                    region,
+                    credential=runtime_credentials.get(engine_row['id']),
+                )
 
                 # Every provider call is metered, success or failure: a retry storm
                 # writes no runs but still burns money. One row per engine query.

@@ -1,0 +1,254 @@
+{% extends "admin/layout.html" %}
+{% block title %}Workspaces · trySearch Admin{% endblock %}
+
+{% block head %}
+<style>
+  .ws-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
+  .ws-toolbar input,.ws-toolbar select{
+    background:#0f0c14;border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:11px 13px;outline:none;font:inherit;font-size:12px
+  }
+  .ws-toolbar input{flex:1;min-width:240px}
+  .ws-toolbar select{min-width:150px}
+  .ws-toolbar input:focus,.ws-toolbar select:focus{border-color:#5d5068}
+  .btn{border:1px solid var(--border);background:#17131d;color:var(--text);border-radius:10px;padding:10px 14px;cursor:pointer;font:inherit;font-size:12px}
+  .btn:hover{border-color:#5d5068}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px}
+  .ws-table-wrap{overflow:auto}
+  .ws-table{width:100%;border-collapse:collapse;min-width:980px}
+  .ws-table th,.ws-table td{padding:13px 12px;border-bottom:1px solid var(--border);text-align:left;font-size:12px}
+  .ws-table th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+  .ws-table tbody tr{cursor:pointer}
+  .ws-table tbody tr:hover{background:#17131d}
+  .ws-name{font-weight:750}
+  .muted{color:var(--muted)}
+  .pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#211b28;color:#d8cddd;font-size:10px}
+  .pill.good{background:rgba(70,210,138,.1);color:#7ee8ae}
+  .pill.bad{background:rgba(255,105,127,.1);color:#ffabb8}
+  .detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .detail-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px}
+  .detail-card h3{margin:0 0 12px;font-size:14px}
+  .meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .meta-item{padding:10px;border:1px solid var(--border);border-radius:10px;background:#121018}
+  .meta-item .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .meta-item .v{margin-top:5px;font-size:12px;word-break:break-word}
+  .detail-list{display:grid;gap:8px}
+  .detail-row{display:flex;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border);border-radius:10px;background:#121018}
+  .error{padding:12px;border:1px solid rgba(255,105,127,.4);background:rgba(255,105,127,.08);color:#ffd0d8;border-radius:10px;font-size:12px}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+  @media(max-width:800px){
+    .detail-grid{grid-template-columns:1fr}
+    .meta-grid{grid-template-columns:1fr}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top">
+  <div>
+    <div class="eyebrow">Administration</div>
+    <h1>Workspaces</h1>
+    <div class="sub">Inspect projects across organizations, including domains, status, locale, type, and membership.</div>
+  </div>
+</div>
+
+<div class="ws-toolbar">
+  <input id="wsSearch" type="search" placeholder="Search brand, domain, website, or organization">
+  <select id="wsStatus">
+    <option value="all">All statuses</option>
+    <option value="active">Active</option>
+    <option value="soft_deleted">Soft deleted</option>
+  </select>
+  <button class="btn" id="refreshBtn">Refresh</button>
+</div>
+
+<div id="errorBox" class="error" style="display:none"></div>
+
+<div class="panel">
+  <div class="ws-table-wrap">
+    <table class="ws-table">
+      <thead>
+        <tr>
+          <th>Workspace</th>
+          <th>Organization</th>
+          <th>Domain</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Locale</th>
+          <th>Members</th>
+        </tr>
+      </thead>
+      <tbody id="wsRows">
+        <tr><td colspan="7" class="empty">Loading workspaces…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section" id="detailSection" style="display:none">
+  <div class="top">
+    <div>
+      <div class="eyebrow">Workspace detail</div>
+      <h2 id="detailTitle">Workspace</h2>
+      <div class="sub" id="detailSubtitle"></div>
+    </div>
+    <button class="btn" id="closeDetail">Close</button>
+  </div>
+
+  <div id="detailError" class="error" style="display:none"></div>
+
+  <div class="detail-grid">
+    <div class="detail-card">
+      <h3>Workspace metadata</h3>
+      <div class="meta-grid" id="metaGrid"></div>
+    </div>
+
+    <div class="detail-card">
+      <h3>Organization members</h3>
+      <div class="detail-list" id="memberList"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const rows = document.getElementById('wsRows');
+  const search = document.getElementById('wsSearch');
+  const status = document.getElementById('wsStatus');
+  const errorBox = document.getElementById('errorBox');
+  const detailSection = document.getElementById('detailSection');
+  const detailTitle = document.getElementById('detailTitle');
+  const detailSubtitle = document.getElementById('detailSubtitle');
+  const detailError = document.getElementById('detailError');
+  const metaGrid = document.getElementById('metaGrid');
+  const memberList = document.getElementById('memberList');
+
+  const esc = (value) => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replace(/'/g, '&#039;');
+
+  const dateText = (value) => value ? new Date(value).toLocaleString() : '—';
+  const domainsText = (domains) => Array.isArray(domains) && domains.length ? domains.join(', ') : '—';
+
+  async function loadWorkspaces(){
+    errorBox.style.display = 'none';
+    rows.innerHTML = '<tr><td colspan="7" class="empty">Loading workspaces…</td></tr>';
+
+    try{
+      const params = new URLSearchParams();
+      if(search.value.trim()) params.set('search', search.value.trim());
+      if(status.value !== 'all') params.set('status', status.value);
+
+      const res = await fetch('/api/admin/workspaces?' + params.toString(), {
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load workspaces.');
+
+      if(!data.workspaces.length){
+        rows.innerHTML = '<tr><td colspan="7" class="empty">No workspaces found.</td></tr>';
+        return;
+      }
+
+      rows.innerHTML = data.workspaces.map(ws => `
+        <tr data-id="${ws.id}">
+          <td>
+            <div class="ws-name">${esc(ws.brand_name)}</div>
+            <div class="muted">#${ws.id}</div>
+          </td>
+          <td>${esc(ws.organization_name)}</td>
+          <td>${esc(ws.domain || ws.website_url || domainsText(ws.domains))}</td>
+          <td><span class="pill">${esc(ws.kind)}</span></td>
+          <td><span class="pill ${ws.status === 'active' ? 'good' : 'bad'}">${esc(ws.status)}</span></td>
+          <td>${esc(ws.geo)} · ${esc(ws.language)}</td>
+          <td>${ws.member_count}</td>
+        </tr>
+      `).join('');
+
+      rows.querySelectorAll('tr[data-id]').forEach(row => {
+        row.addEventListener('click', () => loadDetail(Number(row.dataset.id)));
+      });
+    }catch(err){
+      rows.innerHTML = '';
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
+    }
+  }
+
+  async function loadDetail(id){
+    detailError.style.display = 'none';
+    detailSection.style.display = 'block';
+    detailTitle.textContent = 'Loading…';
+    detailSubtitle.textContent = '';
+    metaGrid.innerHTML = '';
+    memberList.innerHTML = '<div class="muted">Loading…</div>';
+    detailSection.scrollIntoView({behavior:'smooth',block:'start'});
+
+    try{
+      const res = await fetch('/api/admin/workspaces/' + id, {
+        credentials: 'same-origin'
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load workspace.');
+
+      const ws = data.workspace;
+      detailTitle.textContent = ws.brand_name;
+      detailSubtitle.textContent = 'Workspace #' + ws.id + ' · ' + ws.organization_name;
+
+      metaGrid.innerHTML = [
+        ['Workspace ID', ws.id],
+        ['Organization', ws.organization_name],
+        ['Domain', ws.domain || 'Not configured'],
+        ['Website', ws.website_url || 'Not configured'],
+        ['Tracked domains', domainsText(ws.domains)],
+        ['Industry', ws.industry || 'Not set'],
+        ['Geo', ws.geo],
+        ['Language', ws.language],
+        ['Type', ws.kind],
+        ['Status', ws.status],
+        ['Created', dateText(ws.created_at)],
+        ['Updated', dateText(ws.updated_at)]
+      ].map(([k,v]) => `
+        <div class="meta-item">
+          <div class="k">${esc(k)}</div>
+          <div class="v">${esc(v)}</div>
+        </div>
+      `).join('');
+
+      memberList.innerHTML = data.members.length ? data.members.map(m => `
+        <div class="detail-row">
+          <div>
+            <strong>${esc(m.username)}</strong>
+            <div class="muted">${esc(m.email)}</div>
+          </div>
+          <div style="text-align:right">
+            <div><span class="pill">${esc(m.role)}</span></div>
+            <div class="muted" style="margin-top:4px">${m.is_active ? 'Active' : 'Disabled'}</div>
+          </div>
+        </div>
+      `).join('') : '<div class="empty">No organization members.</div>';
+
+    }catch(err){
+      detailError.textContent = err.message;
+      detailError.style.display = 'block';
+    }
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadWorkspaces);
+  document.getElementById('closeDetail').addEventListener('click', () => {
+    detailSection.style.display = 'none';
+  });
+  search.addEventListener('keydown', (event) => {
+    if(event.key === 'Enter') loadWorkspaces();
+  });
+  status.addEventListener('change', loadWorkspaces);
+
+  loadWorkspaces();
+})();
+</script>
+{% endblock %}

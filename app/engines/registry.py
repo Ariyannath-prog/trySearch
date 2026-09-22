@@ -8,7 +8,14 @@ Adding an engine is: write a module, register it here, insert a table row. There
 is no enum, no PROVIDERS list to keep in sync, and no branch on a provider name.
 """
 
+
 from app.engines.perplexity import PerplexityAdapter
+from app.engines.openai import OpenAIAdapter
+from app.engines.gemini import GeminiAdapter
+from app.engines.anthropic import AnthropicAdapter
+from app.engines.xai import XAIAdapter
+from app.engines.deepseek import DeepSeekAdapter
+from app.engines.meta import MetaAdapter
 
 _ADAPTERS = {}
 
@@ -19,6 +26,12 @@ def register(adapter_class):
 
 
 register(PerplexityAdapter)
+register(OpenAIAdapter)
+register(GeminiAdapter)
+register(AnthropicAdapter)
+register(XAIAdapter)
+register(DeepSeekAdapter)
+register(MetaAdapter)
 
 
 def adapter_for(key):

@@ -41,7 +41,9 @@ def create_app():
     from app.auth import auth_bp
     from app.integrations.gsc import gsc_bp
     from app.routes.analytics import analytics_bp
+    from app.routes.admin_api import admin_api_bp
     from app.routes.audit import audit_bp
+    from app.routes.admin import admin_bp
     from app.routes.content import content_bp
     from app.routes.evidence import evidence_bp
     from app.routes.onboarding import onboarding_bp
@@ -53,7 +55,9 @@ def create_app():
         auth_bp,
         gsc_bp,
         analytics_bp,
+        admin_api_bp,
         audit_bp,
+        admin_bp,
         content_bp,
         evidence_bp,
         onboarding_bp,

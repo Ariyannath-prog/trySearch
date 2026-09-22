@@ -32,9 +32,18 @@ def make_user(username):
 
 
 def workspace_scoped_rules():
-    """Every registered rule that names a workspace, with its methods."""
+    """Every registered rule that names a workspace, with its methods.
+
+    Platform-admin routes (/api/admin/...) are excluded: they are gated by
+    require_platform_admin_api(), a separate authorization tier from org
+    membership, and correctly return 403 for every workspace_id -- including
+    ones that don't exist -- rather than the 404 org members get for a
+    workspace outside their own org. See app/admin_auth.py.
+    """
     for rule in sorted(server_pg.app.url_map.iter_rules(), key=lambda r: r.rule):
         if 'workspace_id' not in rule.rule:
+            continue
+        if rule.rule.startswith('/api/admin/'):
             continue
         for method in sorted(rule.methods - {'HEAD', 'OPTIONS'}):
             yield rule, method
