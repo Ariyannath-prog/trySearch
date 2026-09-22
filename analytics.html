@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Dashboard — trySearch</title>
+<link rel="apple-touch-icon" href="/trysearch-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..600&family=Martian+Mono:wght@300;400;500;600&display=swap">
+</head>
+<body>
+<style>
+:root{
+  --ground:#F2F1F5; --surface:#FCFBFD; --surface-2:#EDEBF1; --surface-3:#E4E1E9;
+  --ink:#17151C; --ink-2:#4A4553; --ink-3:#6B6577; --ink-4:#918B9C;
+  --rule:#E0DDE6; --rule-2:#CFCAD8;
+  --brand:#C4185C; --brand-ink:#8E0F41; --brand-wash:#FBEAF1; --brand-edge:#F0C4D6;
+  --s1:#C4185C; --s2:#4B3FCB; --s3:#A8730B; --s4:#0F7FA8; --s5:#57A03C;
+  --good:#0F7A3D; --good-wash:#E6F3EB;
+  --warn:#9A6400; --warn-wash:#F7EFDF;
+  --crit:#B0281B; --crit-wash:#F9EAE8;
+  --shadow:0 26px 60px -28px rgba(20,10,30,.26);
+  --font-ui:'Instrument Sans','Helvetica Neue',Arial,sans-serif;
+  --font-data:'Martian Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --r:3px; --gut:24px;
+  --ease:cubic-bezier(.22,.72,.28,1);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0F0E13; --surface:#17161D; --surface-2:#1E1D26; --surface-3:#282631;
+  --ink:#ECEAF1; --ink-2:#BDB8C7; --ink-3:#948EA1; --ink-4:#6E687C;
+  --rule:#282631; --rule-2:#38353F;
+  --brand:#DB4A80; --brand-ink:#F2739F; --brand-wash:#2A1720; --brand-edge:#4A2434;
+  --s1:#DB4A80; --s2:#7B74DB; --s3:#B5852B; --s4:#1D97BE; --s5:#5AA544;
+  --good:#45B26B; --good-wash:#15281C; --warn:#D19A2E; --warn-wash:#2A2114;
+  --crit:#E5645A; --crit-wash:#2C1917;
+  --shadow:0 26px 60px -26px rgba(0,0,0,.6);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --ground:#0F0E13; --surface:#17161D; --surface-2:#1E1D26; --surface-3:#282631;
+  --ink:#ECEAF1; --ink-2:#BDB8C7; --ink-3:#948EA1; --ink-4:#6E687C;
+  --rule:#282631; --rule-2:#38353F;
+  --brand:#DB4A80; --brand-ink:#F2739F; --brand-wash:#2A1720; --brand-edge:#4A2434;
+  --s1:#DB4A80; --s2:#7B74DB; --s3:#B5852B; --s4:#1D97BE; --s5:#5AA544;
+  --good:#45B26B; --good-wash:#15281C; --warn:#D19A2E; --warn-wash:#2A2114;
+  --crit:#E5645A; --crit-wash:#2C1917;
+  --shadow:0 26px 60px -26px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{overflow-x:clip}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--font-ui);
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3,p{margin:0}
+table{border-collapse:collapse;width:100%}
+.data{font-family:var(--font-data);font-variant-numeric:tabular-nums}
+
+/* --- layout --- */
+.topbar{display:flex;align-items:center;gap:16px;padding:14px var(--gut);
+  border-bottom:1px solid var(--rule);background:var(--surface);position:sticky;top:0;z-index:20}
+.topbar .wordmark{font-weight:700;letter-spacing:-.01em}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.wrap{max-width:1100px;margin:0 auto;padding:24px var(--gut) 72px}
+.grid{display:grid;gap:16px;margin-bottom:16px}
+.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.grid-2{grid-template-columns:2fr 1fr}
+@media (max-width:820px){.grid-3{grid-template-columns:1fr}.grid-2{grid-template-columns:1fr}}
+
+/* --- primitives --- */
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:12px;
+  padding:18px 20px;box-shadow:var(--shadow)}
+.card-label{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:650;margin-bottom:10px}
+.btn{appearance:none;border:1px solid var(--rule-2);background:var(--surface-2);color:var(--ink);
+  padding:9px 16px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;
+  transition:background .15s var(--ease),border-color .15s var(--ease)}
+.btn:hover{background:var(--surface-3)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn-primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn-primary:hover{background:var(--brand-ink)}
+.btn-ghost{background:transparent;border-color:transparent}
+.btn-ghost:hover{background:var(--surface-2)}
+label{display:grid;gap:6px;font-size:13px;color:var(--ink-2);margin-bottom:12px}
+input,textarea,select{padding:9px 11px;border-radius:8px;border:1px solid var(--rule-2);
+  background:var(--surface);color:var(--ink)}
+textarea{resize:vertical;min-height:64px}
+.form-error{color:var(--crit);font-size:13px;margin-top:8px}
+
+/* --- loading / empty shells --- */
+.loading-shell,.empty-shell{max-width:480px;margin:12vh auto 0;text-align:center;padding:0 var(--gut)}
+.spinner{width:28px;height:28px;border-radius:50%;border:3px solid var(--rule);
+  border-top-color:var(--brand);margin:0 auto 16px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-shell h1{font-size:22px;margin-bottom:8px}
+.empty-shell p{color:var(--ink-3);margin-bottom:20px}
+.empty-shell form{text-align:left}
+
+/* --- state banner --- */
+.state-banner{background:var(--surface-2);border:1px solid var(--rule);border-radius:10px;
+  padding:14px 16px;margin-bottom:16px;font-size:14px}
+.state-banner strong{display:block;margin-bottom:2px}
+.state-banner.running{background:var(--brand-wash);border-color:var(--brand-edge)}
+
+/* --- scan bar --- */
+.scan-bar{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.scan-status{font-size:13px;color:var(--ink-3)}
+.quick-add{background:var(--surface);border:1px dashed var(--rule-2);border-radius:10px;
+  padding:14px 16px;margin-bottom:16px}
+.quick-add p{margin-bottom:10px;font-size:14px;color:var(--ink-2)}
+.quick-add form{display:flex;gap:10px;align-items:flex-start}
+.quick-add textarea{flex:1;min-height:44px}
+
+/* --- hero / stat cards --- */
+.hero-value{font-size:44px;font-weight:700;line-height:1;margin:4px 0 6px}
+.hero-sub{font-size:13px;color:var(--ink-3)}
+.hero-sub .delta-up{color:var(--good)}
+.hero-sub .delta-down{color:var(--crit)}
+.stat-value{font-size:28px;font-weight:700;margin:2px 0 4px}
+.stat-sub{font-size:13px;color:var(--ink-3)}
+.empty-note{font-size:14px;color:var(--ink-2);margin-top:4px}
+.empty-note b{display:block;color:var(--ink);margin-bottom:2px}
+
+/* --- tables --- */
+.table-card table{font-size:13.5px}
+th{text-align:left;font-weight:650;color:var(--ink-3);font-size:11.5px;letter-spacing:.04em;
+  text-transform:uppercase;padding:7px 10px;border-bottom:1px solid var(--rule)}
+td{padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11.5px;font-weight:600}
+.tag.yes{background:var(--good-wash);color:var(--good)}
+.tag.no{background:var(--surface-3);color:var(--ink-3)}
+.muted{color:var(--ink-3)}
+.table-empty{padding:18px 4px;color:var(--ink-3);font-size:14px}
+
+/* --- chart --- */
+.chart-wrap{position:relative}
+.trend-svg{width:100%;height:180px;display:block;overflow:visible}
+.chart-empty{color:var(--ink-3);font-size:14px;padding:40px 0;text-align:center}
+.chart-tooltip{position:absolute;pointer-events:none;background:var(--ink);color:var(--ground);
+  font-size:12.5px;padding:6px 9px;border-radius:6px;transform:translate(-50%,-115%);
+  white-space:nowrap;z-index:5}
+:root:not([data-theme="light"]) .chart-tooltip{background:var(--surface-3);color:var(--ink)}
+</style>
+
+<header class="topbar">
+  <div class="wordmark">trySearch</div>
+  <div class="topbar-right">
+    <select id="workspace-switcher" hidden></select>
+    <button id="logout-btn" class="btn btn-ghost">Log out</button>
+  </div>
+</header>
+
+<div id="loading" class="loading-shell">
+  <div class="spinner"></div>
+  <p>Loading your dashboard…</p>
+</div>
+
+<div id="empty-state" class="empty-shell" hidden>
+  <h1>Add your website to get started</h1>
+  <p>trySearch tracks how AI engines answer questions about your brand. Add a
+     website to create your first project.</p>
+  <form id="add-project-form">
+    <label>Website <input name="domain" type="text" placeholder="example.com" required></label>
+    <label>Brand name <input name="brand_name" type="text" required></label>
+    <label>Industry <input name="industry" type="text" placeholder="Optional"></label>
+    <button type="submit" class="btn btn-primary">Create project</button>
+  </form>
+  <p id="add-project-error" class="form-error" hidden></p>
+</div>
+
+<main id="app-main" class="wrap" hidden>
+  <div class="scan-bar">
+    <button id="run-scan-btn" class="btn btn-primary">Run new scan</button>
+    <div id="scan-status" class="scan-status"></div>
+  </div>
+
+  <div id="quick-add-prompt" class="quick-add" hidden>
+    <p>This project has no tracked prompts yet. Add one before running a scan.</p>
+    <form id="quick-add-form">
+      <textarea name="prompt" placeholder="e.g. best project management tools for startups"
+                minlength="8" maxlength="1000" required></textarea>
+      <button type="submit" class="btn">Add prompt</button>
+    </form>
+    <p id="quick-add-error" class="form-error" hidden></p>
+  </div>
+
+  <div id="state-banner" class="state-banner" hidden></div>
+
+  <div class="grid grid-3">
+    <div class="card" id="hero-card">
+      <div class="card-label">Visibility score</div>
+      <div class="hero-value" id="hero-value">—</div>
+      <div class="hero-sub" id="hero-sub"></div>
+      <div class="empty-note" id="hero-empty" hidden></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Mention rate</div>
+      <div class="stat-value" id="mention-value">—</div>
+      <div class="stat-sub" id="mention-sub"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Citation rate</div>
+      <div class="stat-value" id="citation-value">—</div>
+      <div class="stat-sub" id="citation-sub"></div>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-label">Visibility score trend</div>
+      <div class="chart-wrap" id="chart-wrap">
+        <svg class="trend-svg" id="trend-svg" viewBox="0 0 640 180" preserveAspectRatio="none"></svg>
+        <div class="chart-tooltip" id="chart-tooltip" hidden></div>
+      </div>
+      <div class="chart-empty" id="chart-empty" hidden>Not enough history yet.</div>
+    </div>
+    <div class="card table-card">
+      <div class="card-label">Per-engine breakdown</div>
+      <table id="engine-table">
+        <thead><tr><th>Engine</th><th>Score</th><th>Mentions</th><th>Answers</th></tr></thead>
+        <tbody id="engine-table-body"></tbody>
+      </table>
+      <div class="table-empty" id="engine-table-empty" hidden>No engine data yet.</div>
+    </div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card" id="site-health-card">
+      <div class="card-label">Site health</div>
+      <div id="site-health-body"></div>
+    </div>
+    <div class="card table-card">
+      <div class="card-label">Recent evidence</div>
+      <div id="evidence-caption" class="stat-sub" style="margin-bottom:8px"></div>
+      <table id="evidence-table">
+        <thead><tr><th>Prompt</th><th>Mentioned</th><th>Cited</th><th>Sources</th></tr></thead>
+        <tbody id="evidence-table-body"></tbody>
+      </table>
+      <div class="table-empty" id="evidence-table-empty" hidden>No scans have completed yet.</div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var state = {
+    projects: [],
+    activeWorkspaceId: null,
+    report: null,
+    pollTimer: null,
+  };
+
+  var STATE_COPY = {
+    not_yet_run: {
+      title: 'Not yet run',
+      body: 'No completed scan yet. Run a scan to start measuring visibility.',
+    },
+    absent: {
+      title: 'Brand not mentioned',
+      body: 'The last scan completed, but the brand was not mentioned in any tracked answer.',
+    },
+    insufficient: {
+      title: 'Collecting data',
+      body: '', // filled in with n/threshold at render time
+    },
+  };
+
+  // ---------------------------------------------------------------- api --
+
+  function apiCall(url, opts) {
+    opts = opts || {};
+    opts.credentials = 'same-origin';
+    if (opts.body && !opts.headers) opts.headers = { 'Content-Type': 'application/json' };
+    return fetch(url, opts).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (body) {
+        return { ok: res.ok, status: res.status, body: body };
+      });
+    });
+  }
+
+  var api = {
+    listProjects: function () { return apiCall('/api/analytics/projects'); },
+    createProject: function (data) {
+      return apiCall('/api/analytics/projects', { method: 'POST', body: JSON.stringify(data) });
+    },
+    getReport: function (id) { return apiCall('/api/analytics/projects/' + id + '/report'); },
+    getEvidence: function (id) { return apiCall('/api/analytics/projects/' + id + '/evidence'); },
+    addTrackedPrompt: function (id, data) {
+      return apiCall('/api/analytics/projects/' + id + '/tracked-prompts',
+        { method: 'POST', body: JSON.stringify(data) });
+    },
+    startScan: function (id) {
+      return apiCall('/api/analytics/projects/' + id + '/prompt-scans', { method: 'POST', body: '{}' });
+    },
+    logout: function () { return apiCall('/api/logout', { method: 'POST' }); },
+  };
+
+  // ------------------------------------------------------------ helpers --
+
+  function $(sel, root) { return (root || document).querySelector(sel); }
+
+  function text(el, value) { el.textContent = value == null ? '' : value; }
+
+  function fmtPct(value) {
+    return value == null ? '—' : (Math.round(value * 1000) / 10) + '%';
+  }
+
+  function fmtScore(value) {
+    return value == null ? '—' : (Math.round(value * 10) / 10).toFixed(1);
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).slice(0, 10);
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  function fmtDateTime(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function clearChildren(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+
+  // ------------------------------------------------------------- boot ---
+
+  function boot() {
+    api.listProjects().then(function (res) {
+      if (!res.ok) { return showFatal(); }
+      state.projects = (res.body && res.body.projects) || [];
+      $('#loading').hidden = true;
+      if (!state.projects.length) {
+        $('#empty-state').hidden = false;
+        return;
+      }
+      $('#app-main').hidden = false;
+      renderWorkspaceSwitcher();
+      loadWorkspace(state.projects[0].id);
+    });
+  }
+
+  function showFatal() {
+    $('#loading').hidden = true;
+    $('#empty-state').hidden = false;
+    $('#empty-state h1').textContent = 'Something went wrong';
+    $('#empty-state p').textContent = 'We could not load your projects. Try reloading the page.';
+    $('#add-project-form').hidden = true;
+  }
+
+  function renderWorkspaceSwitcher() {
+    var sel = $('#workspace-switcher');
+    clearChildren(sel);
+    if (state.projects.length < 2) { sel.hidden = true; return; }
+    state.projects.forEach(function (project) {
+      var opt = document.createElement('option');
+      opt.value = project.id;
+      opt.textContent = (project.brand_name || project.domain || ('Project ' + project.id)) +
+        (project.domain ? ' (' + project.domain + ')' : '');
+      sel.appendChild(opt);
+    });
+    sel.hidden = false;
+    sel.onchange = function () { loadWorkspace(Number(sel.value)); };
+  }
+
+  function loadWorkspace(id) {
+    state.activeWorkspaceId = id;
+    var sel = $('#workspace-switcher');
+    if (!sel.hidden) sel.value = String(id);
+    if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+    api.getReport(id).then(function (res) {
+      if (!res.ok) return;
+      state.report = res.body;
+      renderDashboard(res.body);
+      refreshEvidence(id);
+    });
+  }
+
+  // -------------------------------------------------------- dashboard ---
+
+  function renderDashboard(report) {
+    renderHero(report.visibility);
+    renderStat('mention', report.visibility.mention_rate);
+    renderStat('citation', report.visibility.citation_rate);
+    renderStateBanner(report.visibility);
+    renderEngineTable(report.engines);
+    renderTrendChart(report.history);
+    renderSiteHealth(report.site_health);
+  }
+
+  function renderHero(visibility) {
+    var valueEl = $('#hero-value'), subEl = $('#hero-sub'), emptyEl = $('#hero-empty');
+    if (visibility.state === 'ok' && visibility.visibility_score.value != null) {
+      var v = visibility.visibility_score;
+      text(valueEl, fmtScore(v.value));
+      var range = (v.low != null && v.high != null)
+        ? (fmtScore(v.low) + '–' + fmtScore(v.high) + ' 95% interval · ') : '';
+      var deltaHtml = '';
+      var d = visibility.delta;
+      if (d && d.state === 'up') deltaHtml = ' · <span class="delta-up">↑ improving</span>';
+      else if (d && d.state === 'down') deltaHtml = ' · <span class="delta-down">↓ declining</span>';
+      else if (d && d.state === 'no_measurable_change') deltaHtml = ' · no measurable change';
+      subEl.textContent = range + v.n + ' answers';
+      if (deltaHtml) {
+        var span = document.createElement('span');
+        span.innerHTML = deltaHtml; // fixed strings only, no external data
+        subEl.appendChild(span);
+      }
+      emptyEl.hidden = true;
+    } else {
+      text(valueEl, '—');
+      subEl.textContent = '';
+      var copy = STATE_COPY[visibility.state] || STATE_COPY.not_yet_run;
+      var body = copy.body;
+      if (visibility.state === 'insufficient') {
+        body = 'Collecting data — ' + visibility.n + ' of ' + visibility.threshold +
+          ' answers gathered. The score appears once enough evidence exists.';
+      }
+      emptyEl.hidden = false;
+      clearChildren(emptyEl);
+      var b = document.createElement('b'); b.textContent = copy.title;
+      var p = document.createElement('span'); p.textContent = body;
+      emptyEl.appendChild(b); emptyEl.appendChild(p);
+    }
+  }
+
+  function renderStat(prefix, envelope) {
+    var valueEl = $('#' + prefix + '-value'), subEl = $('#' + prefix + '-sub');
+    if (envelope && envelope.value != null) {
+      text(valueEl, fmtPct(envelope.value));
+      var range = (envelope.low != null && envelope.high != null)
+        ? (fmtPct(envelope.low) + '–' + fmtPct(envelope.high) + ' · ') : '';
+      text(subEl, range + envelope.n + ' answers');
+    } else {
+      text(valueEl, '—');
+      text(subEl, 'No data yet');
+    }
+  }
+
+  function renderStateBanner(visibility) {
+    var banner = $('#state-banner');
+    if (state.pollTimer) { return; } // the active-scan banner takes priority; set in refreshEvidence
+    if (visibility.state === 'not_yet_run') {
+      banner.hidden = false;
+      banner.classList.remove('running');
+      clearChildren(banner);
+      var strong = document.createElement('strong'); strong.textContent = 'No scan yet';
+      var p = document.createElement('div');
+      p.textContent = 'Run a scan below once you have at least one tracked prompt.';
+      banner.appendChild(strong); banner.appendChild(p);
+    } else {
+      banner.hidden = true;
+    }
+  }
+
+  // ------------------------------------------------------- engine table --
+
+  function renderEngineTable(engines) {
+    var body = $('#engine-table-body'), empty = $('#engine-table-empty');
+    clearChildren(body);
+    var byEngine = {};
+    (engines || []).forEach(function (row) {
+      var existing = byEngine[row.engine_id];
+      if (!existing || String(row.date) > String(existing.date)) byEngine[row.engine_id] = row;
+    });
+    var rows = Object.keys(byEngine).map(function (k) { return byEngine[k]; });
+    if (!rows.length) { empty.hidden = false; return; }
+    empty.hidden = true;
+    rows.forEach(function (row) {
+      var tr = document.createElement('tr');
+      var name = document.createElement('td');
+      name.textContent = row.display_name || ('Engine ' + row.engine_id);
+      var score = document.createElement('td'); score.className = 'data';
+      score.textContent = fmtScore(row.visibility_score);
+      var mention = document.createElement('td'); mention.className = 'data';
+      mention.textContent = fmtPct(row.mention_rate);
+      var answers = document.createElement('td'); answers.className = 'data';
+      answers.textContent = row.answer_count == null ? '—' : String(row.answer_count);
+      tr.appendChild(name); tr.appendChild(score); tr.appendChild(mention); tr.appendChild(answers);
+      body.appendChild(tr);
+    });
+  }
+
+  // ------------------------------------------------------------- chart --
+
+  function renderTrendChart(history) {
+    var svg = $('#trend-svg'), emptyEl = $('#chart-empty'), wrap = $('#chart-wrap');
+    var points = (history || []).filter(function (row) { return row.visibility_score != null; });
+    clearChildren(svg);
+    if (points.length < 2) {
+      wrap.hidden = true; emptyEl.hidden = false;
+      return;
+    }
+    wrap.hidden = false; emptyEl.hidden = true;
+
+    var W = 640, H = 180, padL = 30, padR = 12, padT = 14, padB = 22;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var n = (history || []).length;
+    var xAt = function (idx) { return n <= 1 ? padL : padL + (idx / (n - 1)) * plotW; };
+    var yAt = function (v) { return padT + (1 - (Math.max(0, Math.min(100, v)) / 100)) * plotH; };
+
+    var svgns = 'http://www.w3.org/2000/svg';
+    function el(tag, attrs) {
+      var node = document.createElementNS(svgns, tag);
+      for (var k in attrs) node.setAttribute(k, attrs[k]);
+      return node;
+    }
+
+    // gridlines at 0/25/50/75/100
+    [0, 25, 50, 75, 100].forEach(function (tick) {
+      var y = yAt(tick);
+      svg.appendChild(el('line', { x1: padL, x2: W - padR, y1: y, y2: y, stroke: 'var(--rule)', 'stroke-width': 1 }));
+      var label = el('text', { x: 2, y: y + 4, fill: 'var(--ink-4)', 'font-size': 10 });
+      label.textContent = String(tick);
+      svg.appendChild(label);
+    });
+
+    // build path segments, breaking across any null-score row so a gap is
+    // never drawn as a measured value.
+    var segments = [];
+    var current = [];
+    (history || []).forEach(function (row, idx) {
+      if (row.visibility_score == null) {
+        if (current.length) { segments.push(current); current = []; }
+        return;
+      }
+      current.push({ idx: idx, row: row });
+    });
+    if (current.length) segments.push(current);
+
+    segments.forEach(function (segment) {
+      if (segment.length < 2) return;
+      var d = segment.map(function (p, i) {
+        return (i === 0 ? 'M' : 'L') + xAt(p.idx).toFixed(1) + ' ' + yAt(p.row.visibility_score).toFixed(1);
+      }).join(' ');
+      var areaD = d + ' L' + xAt(segment[segment.length - 1].idx).toFixed(1) + ' ' + (padT + plotH) +
+        ' L' + xAt(segment[0].idx).toFixed(1) + ' ' + (padT + plotH) + ' Z';
+      svg.appendChild(el('path', { d: areaD, fill: 'var(--brand)', opacity: 0.1, stroke: 'none' }));
+      svg.appendChild(el('path', { d: d, fill: 'none', stroke: 'var(--brand)', 'stroke-width': 2,
+        'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    });
+
+    // end marker + value label on the last plotted point
+    var last = points[points.length - 1];
+    var lastIdx = (history || []).lastIndexOf(last);
+    var lx = xAt(lastIdx), ly = yAt(last.visibility_score);
+    svg.appendChild(el('circle', { cx: lx, cy: ly, r: 4, fill: 'var(--brand)', stroke: 'var(--surface)', 'stroke-width': 2 }));
+    var endLabel = el('text', { x: Math.min(lx + 6, W - padR - 26), y: ly - 8, fill: 'var(--ink-2)', 'font-size': 11, 'font-weight': 600 });
+    endLabel.textContent = fmtScore(last.visibility_score);
+    svg.appendChild(endLabel);
+
+    // hover crosshair + tooltip
+    var crosshair = el('line', { y1: padT, y2: padT + plotH, stroke: 'var(--ink-4)', 'stroke-width': 1, visibility: 'hidden' });
+    svg.appendChild(crosshair);
+    var hitRect = el('rect', { x: padL, y: padT, width: plotW, height: plotH, fill: 'transparent' });
+    svg.appendChild(hitRect);
+    var tooltip = $('#chart-tooltip');
+
+    function onMove(evt) {
+      var rect = svg.getBoundingClientRect();
+      var relX = ((evt.clientX - rect.left) / rect.width) * W;
+      var idx = Math.round(((relX - padL) / plotW) * (n - 1));
+      idx = Math.max(0, Math.min(n - 1, idx));
+      var row = (history || [])[idx];
+      if (!row) return;
+      var x = xAt(idx);
+      crosshair.setAttribute('x1', x); crosshair.setAttribute('x2', x);
+      crosshair.setAttribute('visibility', 'visible');
+      tooltip.hidden = false;
+      tooltip.style.left = ((x / W) * rect.width) + 'px';
+      tooltip.style.top = (row.visibility_score != null ? (yAt(row.visibility_score) / H) * rect.height : rect.height / 2) + 'px';
+      clearChildren(tooltip);
+      var valueSpan = document.createElement('strong');
+      valueSpan.textContent = row.visibility_score == null ? 'No score' : fmtScore(row.visibility_score);
+      var dateSpan = document.createElement('span');
+      dateSpan.textContent = ' · ' + fmtDate(row.date);
+      tooltip.appendChild(valueSpan); tooltip.appendChild(dateSpan);
+    }
+    function onLeave() { crosshair.setAttribute('visibility', 'hidden'); tooltip.hidden = true; }
+    hitRect.addEventListener('pointermove', onMove);
+    hitRect.addEventListener('pointerleave', onLeave);
+  }
+
+  // -------------------------------------------------------- site health --
+
+  function renderSiteHealth(siteHealth) {
+    var body = $('#site-health-body');
+    clearChildren(body);
+    if (!siteHealth || !siteHealth.run) {
+      var p = document.createElement('p');
+      p.className = 'stat-sub';
+      p.textContent = 'No site audit yet.';
+      body.appendChild(p);
+      return;
+    }
+    var run = siteHealth.run;
+    var score = document.createElement('div');
+    score.className = 'stat-value';
+    score.textContent = run.readiness_score == null ? '—' : fmtScore(run.readiness_score);
+    var sub = document.createElement('div');
+    sub.className = 'stat-sub';
+    var findingCount = (siteHealth.findings || []).length;
+    sub.textContent = (run.status || 'unknown') + ' · ' + findingCount + ' findings · ' +
+      fmtDate(run.created_at);
+    body.appendChild(score); body.appendChild(sub);
+  }
+
+  // -------------------------------------------------------------- scan --
+
+  function refreshEvidence(workspaceId) {
+    api.getEvidence(workspaceId).then(function (res) {
+      if (!res.ok || state.activeWorkspaceId !== workspaceId) return;
+      renderEvidenceTable(res.body.evidence);
+      if (res.body.active_job) {
+        showScanRunning();
+        state.pollTimer = setTimeout(function () { refreshEvidence(workspaceId); }, 5000);
+      } else {
+        hideScanRunning();
+        if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
+      }
+    });
+  }
+
+  function showScanRunning() {
+    $('#run-scan-btn').disabled = true;
+    text($('#scan-status'), 'A scan is running…');
+    var banner = $('#state-banner');
+    banner.hidden = false;
+    banner.classList.add('running');
+    clearChildren(banner);
+    var strong = document.createElement('strong'); strong.textContent = 'Scan running';
+    var p = document.createElement('div');
+    p.textContent = 'Figures below are from the last completed run and will update automatically.';
+    banner.appendChild(strong); banner.appendChild(p);
+  }
+
+  function hideScanRunning() {
+    $('#run-scan-btn').disabled = false;
+    text($('#scan-status'), '');
+    var banner = $('#state-banner');
+    if (banner.classList.contains('running')) banner.hidden = true;
+    banner.classList.remove('running');
+    if (state.report) renderStateBanner(state.report.visibility);
+  }
+
+  function renderEvidenceTable(evidence) {
+    var body = $('#evidence-table-body'), empty = $('#evidence-table-empty'), caption = $('#evidence-caption');
+    clearChildren(body);
+    var answers = (evidence && evidence.answers) || [];
+    if (evidence && evidence.run) {
+      caption.textContent = 'Last scan ' + fmtDateTime(evidence.run.completed_at || evidence.run.created_at) +
+        ' · ' + (evidence.run.completed_count || 0) + '/' + (evidence.run.prompt_count || 0) + ' prompts';
+    } else {
+      caption.textContent = '';
+    }
+    if (!answers.length) { empty.hidden = false; return; }
+    empty.hidden = true;
+    answers.slice(0, 25).forEach(function (answer) {
+      var tr = document.createElement('tr');
+      var prompt = document.createElement('td');
+      prompt.textContent = answer.prompt || '—';
+      prompt.style.maxWidth = '260px';
+
+      var mentioned = document.createElement('td');
+      var mTag = document.createElement('span');
+      mTag.className = 'tag ' + (answer.brand_mentioned ? 'yes' : 'no');
+      mTag.textContent = answer.brand_mentioned
+        ? ('Yes' + (answer.brand_rank ? ' · #' + answer.brand_rank : ''))
+        : 'No';
+      mentioned.appendChild(mTag);
+
+      var cited = document.createElement('td');
+      var cTag = document.createElement('span');
+      cTag.className = 'tag ' + (answer.brand_cited ? 'yes' : 'no');
+      cTag.textContent = answer.brand_cited ? 'Yes' : 'No';
+      cited.appendChild(cTag);
+
+      var sources = document.createElement('td'); sources.className = 'data';
+      sources.textContent = String((answer.sources || []).length);
+
+      tr.appendChild(prompt); tr.appendChild(mentioned); tr.appendChild(cited); tr.appendChild(sources);
+      body.appendChild(tr);
+    });
+  }
+
+  function handleScanResponse(res) {
+    var statusEl = $('#scan-status');
+    if (res.status === 202) {
+      text(statusEl, 'Scan queued…');
+      $('#quick-add-prompt').hidden = true;
+      refreshEvidence(state.activeWorkspaceId);
+      return;
+    }
+    var msg = (res.body && res.body.error) || 'Could not start a scan.';
+    if (res.status === 409) {
+      $('#quick-add-prompt').hidden = false;
+      text(statusEl, msg);
+    } else if (res.status === 503) {
+      text(statusEl, msg);
+    } else if (res.status === 402) {
+      var spend = res.body ? res.body.spend_usd : null;
+      var ceiling = res.body ? res.body.ceiling_usd : null;
+      text(statusEl, msg + (spend != null ? (' ($' + spend + ' of $' + ceiling + ')') : ''));
+    } else {
+      text(statusEl, msg);
+    }
+  }
+
+  // ------------------------------------------------------------- forms --
+
+  function wireForms() {
+    $('#run-scan-btn').addEventListener('click', function () {
+      if (!state.activeWorkspaceId) return;
+      text($('#scan-status'), 'Starting scan…');
+      api.startScan(state.activeWorkspaceId).then(handleScanResponse);
+    });
+
+    $('#quick-add-form').addEventListener('submit', function (evt) {
+      evt.preventDefault();
+      var errorEl = $('#quick-add-error');
+      errorEl.hidden = true;
+      var form = evt.target;
+      var prompt = form.prompt.value.trim();
+      if (prompt.length < 8 || prompt.length > 1000) {
+        text(errorEl, 'Enter a prompt between 8 and 1,000 characters.');
+        errorEl.hidden = false;
+        return;
+      }
+      api.addTrackedPrompt(state.activeWorkspaceId, { prompt: prompt }).then(function (res) {
+        if (res.ok) {
+          form.reset();
+          $('#quick-add-prompt').hidden = true;
+          text($('#scan-status'), 'Prompt added. Click "Run new scan" to start.');
+        } else {
+          text(errorEl, (res.body && res.body.error) || 'Could not add that prompt.');
+          errorEl.hidden = false;
+        }
+      });
+    });
+
+    $('#add-project-form').addEventListener('submit', function (evt) {
+      evt.preventDefault();
+      var errorEl = $('#add-project-error');
+      errorEl.hidden = true;
+      var form = evt.target;
+      var data = {
+        domain: form.domain.value.trim(),
+        brand_name: form.brand_name.value.trim(),
+        industry: form.industry.value.trim(),
+      };
+      api.createProject(data).then(function (res) {
+        if (res.ok) {
+          state.projects = [res.body.project];
+          $('#empty-state').hidden = true;
+          $('#app-main').hidden = false;
+          renderWorkspaceSwitcher();
+          loadWorkspace(res.body.project.id);
+        } else {
+          text(errorEl, (res.body && res.body.error) || 'Could not create that project.');
+          errorEl.hidden = false;
+        }
+      });
+    });
+
+    $('#logout-btn').addEventListener('click', function () {
+      api.logout().then(function () { window.location.href = '/'; });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    wireForms();
+    boot();
+  });
+})();
+</script>
+</body>
+</html>

@@ -14,7 +14,7 @@ from app.crawler.fetch import normalise_site_host
 from app.db import engine
 from app.extraction.mentions import domain_matches, project_brand_aliases, text_mentions_alias
 from app.jobs import latest_site_audit
-from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts
+from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts, engines
 from app.rollup import latest_metrics, latest_metrics_all_engines
 from app.stats import describe_delta, score_envelope
 from app.tenancy import workspace_for_member
@@ -37,6 +37,20 @@ def analytics_report(workspace_id, user_id):
     latest = series[0] if series else None
     per_engine = [row for row in latest_metrics_all_engines(workspace_id)
                   if row['engine_id'] is not None]
+    # metrics_daily only stores engine_id; a dashboard has nothing to label a
+    # row with unless the name comes along for the ride.
+    if per_engine:
+        engine_ids = {row['engine_id'] for row in per_engine}
+        with engine.connect() as conn:
+            names = {
+                erow['id']: {'key': erow['key'], 'display_name': erow['display_name']}
+                for erow in conn.execute(
+                    select(engines.c.id, engines.c.key, engines.c.display_name)
+                    .where(engines.c.id.in_(engine_ids))
+                ).mappings()
+            }
+        for row in per_engine:
+            row.update(names.get(row['engine_id'], {'key': None, 'display_name': None}))
 
     # Every metric leaves this function as {value, low, high, n} with an explicit
     # state, never as a bare number. T11: the product's stated differentiator.

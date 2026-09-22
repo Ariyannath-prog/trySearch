@@ -1,0 +1,52 @@
+"""Static app-shell pages served by app/routes/pages.py."""
+
+import os
+import unittest
+
+os.environ['APP_ENV'] = 'development'
+os.environ['SECRET_KEY'] = 'pages-test-secret'
+
+import server_pg  # noqa: E402
+from conftest import create_workspace  # noqa: E402
+
+from app.db import engine  # noqa: E402
+from app.models import users  # noqa: E402
+from sqlalchemy import insert  # noqa: E402
+from werkzeug.security import generate_password_hash  # noqa: E402
+
+PASSWORD = 'pages-password-123'
+
+
+def make_user(username):
+    with engine.begin() as conn:
+        return conn.execute(insert(users).values(
+            username=username, email=f'{username}@example.com',
+            password_hash=generate_password_hash(PASSWORD),
+            created_at=__import__('datetime').datetime.utcnow(),
+        )).inserted_primary_key[0]
+
+
+class AnalyticsPageTests(unittest.TestCase):
+
+    def login(self, client, username):
+        response = client.post('/api/login', json={'username': username, 'password': PASSWORD})
+        self.assertEqual(response.status_code, 200, f'login failed for {username}')
+
+    def test_analytics_redirects_anonymous_to_login(self):
+        with server_pg.app.test_client() as client:
+            response = client.get('/analytics')
+            self.assertEqual(response.status_code, 302)
+            self.assertTrue(response.headers['Location'].endswith('/login'))
+
+    def test_analytics_returns_200_for_logged_in_user(self):
+        user_id = make_user('pages_dashboard_user')
+        create_workspace(user_id=user_id, domain='pages-test.example', brand_name='PagesTest')
+        with server_pg.app.test_client() as client:
+            self.login(client, 'pages_dashboard_user')
+            response = client.get('/analytics')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('text/html', response.content_type)
+
+
+if __name__ == '__main__':
+    unittest.main()

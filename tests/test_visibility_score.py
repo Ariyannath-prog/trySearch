@@ -222,6 +222,8 @@ class ReadPathTests(unittest.TestCase):
         for row in report['engines']:
             self.assertIsNotNone(row['engine_id'],
                                  'engines must be real engines, not crawl sub-scores')
+            self.assertEqual(row['display_name'], 'Perplexity',
+                             'a dashboard row needs a real name, not a bare engine_id')
         names = {str(v) for v in report['engines']}
         for fake in ('Metadata', 'Crawlability', 'Structured data'):
             self.assertFalse(any(fake in n for n in names),
