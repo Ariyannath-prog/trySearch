@@ -25,6 +25,9 @@
     createProject: function (data) {
       return apiCall('/api/analytics/projects', { method: 'POST', body: JSON.stringify(data) });
     },
+    deleteProject: function (id) {
+      return apiCall('/api/analytics/projects/' + id, { method: 'DELETE' });
+    },
     getReport: function (id) { return apiCall('/api/analytics/projects/' + id + '/report'); },
     getEvidence: function (id) { return apiCall('/api/analytics/projects/' + id + '/evidence'); },
     addTrackedPrompt: function (id, data) {
