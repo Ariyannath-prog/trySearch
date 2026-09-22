@@ -22,13 +22,13 @@ from sqlalchemy import (
     text,
 )
 import json
-import os
 
 from app.db import engine
 from app.costs import ceiling_status, refusal_payload
 from app.jobs import create_analytics_job
 from app.metrics import latest_prompt_evidence
 from app.models import analytics_answer_sources, analytics_audit_jobs, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts
+from app.scanning import enabled_engines
 from app.tenancy import require_workspace
 from app.utils import row_to_dict
 
@@ -40,9 +40,14 @@ def start_analytics_prompt_scan(workspace_id):
     if error:
         return error
     user_id, project = access.user_id, access.workspace
-    if not os.environ.get('PERPLEXITY_API_KEY'):
-        return jsonify({'error': 'Perplexity is not configured. Add PERPLEXITY_API_KEY on the server.'}), 503
     with engine.connect() as conn:
+        # Provider-agnostic and DB-backed, matching run_prompt_scan_job's own
+        # check - no engine name is ever hardcoded here. Which engine actually
+        # answers, and whether its credential works, is decided per-prompt at
+        # execution time (app/scanning.py), not pre-guessed here.
+        if not enabled_engines(conn):
+            return jsonify({'error': 'No AI engine is configured. Configure a provider '
+                                      'credential in Admin → API Keys.'}), 503
         prompt_count = conn.execute(select(func.count()).select_from(analytics_tracked_prompts).where(
             (analytics_tracked_prompts.c.workspace_id == workspace_id) &
             (analytics_tracked_prompts.c.active.is_(True))
