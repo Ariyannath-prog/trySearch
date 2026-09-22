@@ -609,6 +609,24 @@ engines = Table(
 )
 
 
+# A workspace with no rows here uses every platform-enabled engine, exactly
+# as before this table existed. Onboarding's "choose engines" step writes
+# one row per currently platform-enabled engine, so a workspace that has
+# made a choice always holds a complete, explicit snapshot rather than a
+# partial one an absent row could be misread as.
+workspace_engines = Table(
+    'workspace_engines',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('workspace_id', Integer, ForeignKey('workspaces.id', ondelete='CASCADE'), nullable=False),
+    Column('engine_id', Integer, ForeignKey('engines.id', ondelete='CASCADE'), nullable=False),
+    Column('enabled', Boolean, nullable=False, default=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+    UniqueConstraint('workspace_id', 'engine_id', name='uq_workspace_engines_workspace_engine'),
+)
+
+
 workspace_branding = Table(
     'workspace_branding',
     metadata,

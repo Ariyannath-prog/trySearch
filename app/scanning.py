@@ -52,6 +52,7 @@ from app.models import (
     competitors,
     analytics_content_opportunities,
     workspaces,
+    workspace_engines,
     analytics_prompt_scan_runs,
     analytics_provider_answers,
     analytics_scan_schedules,
@@ -103,16 +104,31 @@ def call_with_retries(call, *args, attempts=None):
     return None, f'{last_error} (after {attempts} attempts)'
 
 
-def enabled_engines(conn):
+def enabled_engines(conn, workspace_id=None):
     """Enabled engines from the table, paired with their adapter.
 
     The table is the registry. An enabled row whose module is not deployed is
     skipped rather than fatal, so a half-rolled-out engine cannot take the run
     down with it.
+
+    A workspace with no workspace_engines rows uses every platform-enabled
+    engine - the same behavior as before that table existed. One with a saved
+    selection (onboarding's "choose engines" step writes a complete row per
+    platform-enabled engine) is narrowed to only the ones it left enabled.
     """
     rows = conn.execute(
         select(engines_table).where(engines_table.c.enabled).order_by(engines_table.c.id)
     ).mappings().all()
+    if workspace_id is not None:
+        selection = {
+            row['engine_id']: row['enabled']
+            for row in conn.execute(
+                select(workspace_engines.c.engine_id, workspace_engines.c.enabled)
+                .where(workspace_engines.c.workspace_id == workspace_id)
+            ).mappings()
+        }
+        if selection:
+            rows = [row for row in rows if selection.get(row['id'], False)]
     pairs = []
     for row in rows:
         adapter = adapter_for(row['key'])
@@ -368,7 +384,7 @@ def run_prompt_scan_job(job_id):
     pending = [prompt for prompt in prompts if prompt['id'] not in answered_prompt_ids]
 
     with engine.connect() as conn:
-        engines_in_use = enabled_engines(conn)
+        engines_in_use = enabled_engines(conn, workspace_id=workspace_id)
         runtime_credentials = {
             engine_row['id']: credential_for_engine(conn, engine_row)
             for engine_row, _adapter in engines_in_use

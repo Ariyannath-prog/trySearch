@@ -26,19 +26,8 @@
     '  <thead><tr><th>Project</th><th>Domain</th><th>Role</th><th>Latest run</th><th>Updated</th><th></th></tr></thead>' +
     '  <tbody id="projects-table-body"></tbody>' +
     '</table></div>' +
-    '<div class="empty" id="projects-empty" hidden><p>No projects yet. Add your first website below.</p></div>' +
-    '<div class="panel" style="margin-top:16px">' +
-    '  <div class="ph"><h4>Add a project</h4></div>' +
-    '  <div class="pb">' +
-    '    <form id="add-project-form">' +
-    '      <label>Website<input type="text" name="domain" placeholder="example.com" required></label>' +
-    '      <label style="margin-top:10px">Brand name<input type="text" name="brand_name" required></label>' +
-    '      <label style="margin-top:10px">Industry<input type="text" name="industry" placeholder="Optional"></label>' +
-    '      <button type="submit" class="btn" style="margin-top:14px">Create project</button>' +
-    '    </form>' +
-    '    <p class="form-error" id="add-project-error" hidden></p>' +
-    '  </div>' +
-    '</div>';
+    '<div class="empty" id="projects-empty" hidden><p>No projects yet. Add your first website to get started.</p></div>' +
+    '<div style="margin-top:16px"><a class="btn" href="/onboarding">+ New project</a></div>';
 
   function openProject(id) {
     try { localStorage.setItem('ts_active_project_id', String(id)); } catch (e) { /* ignore */ }
@@ -84,36 +73,9 @@
     });
   }
 
-  function wireAddForm() {
-    var form = $('#add-project-form');
-    if (form.dataset.wired) return;
-    form.dataset.wired = '1';
-    form.addEventListener('submit', function (evt) {
-      evt.preventDefault();
-      var errorEl = $('#add-project-error');
-      errorEl.hidden = true;
-      var data = {
-        domain: form.domain.value.trim(),
-        brand_name: form.brand_name.value.trim(),
-        industry: form.industry.value.trim()
-      };
-      TS.api.createProject(data).then(function (res) {
-        if (res.ok) {
-          form.reset();
-          try { localStorage.setItem('ts_active_project_id', String(res.body.project.id)); } catch (e) { /* ignore */ }
-          boot();
-        } else {
-          text(errorEl, (res.body && res.body.error) || 'Could not create that project.');
-          errorEl.hidden = false;
-        }
-      });
-    });
-  }
-
   function boot() {
     var views = $('#views');
     views.innerHTML = VIEWS_HTML;
-    wireAddForm();
     views.classList.add('skel');
     TS.api.listProjects().then(function (res) {
       views.classList.remove('skel');

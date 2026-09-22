@@ -38,5 +38,18 @@
       return apiCall('/api/analytics/projects/' + id + '/prompt-scans', { method: 'POST', body: '{}' });
     },
     logout: function () { return apiCall('/api/logout', { method: 'POST' }); },
+    previewOnboarding: function (domain) {
+      return apiCall('/api/onboarding/preview', { method: 'POST', body: JSON.stringify({ domain: domain }) });
+    },
+    approveOnboarding: function (payload) {
+      return apiCall('/api/onboarding/approve', { method: 'POST', body: JSON.stringify(payload) });
+    },
+    getWorkspaceEngines: function (id) {
+      return apiCall('/api/analytics/projects/' + id + '/engines');
+    },
+    setWorkspaceEngines: function (id, engineIds) {
+      return apiCall('/api/analytics/projects/' + id + '/engines',
+        { method: 'PUT', body: JSON.stringify({ engine_ids: engineIds }) });
+    },
   };
 })();

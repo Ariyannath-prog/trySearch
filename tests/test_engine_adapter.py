@@ -25,6 +25,7 @@ from app.models import (  # noqa: E402
     analytics_prompt_scan_runs,
     analytics_tracked_prompts,
     engines as engines_table,
+    workspace_engines,
 )
 
 ENGINES_DIR = pathlib.Path(__file__).resolve().parent.parent / 'app' / 'engines'
@@ -155,6 +156,40 @@ class RegistryTableTests(unittest.TestCase):
             row = conn.execute(select(engines_table).where(
                 engines_table.c.key == 'perplexity')).mappings().first()
         self.assertEqual(row['source_type'], 'api')
+
+
+class WorkspaceEngineSelectionTests(unittest.TestCase):
+    """A workspace with no saved choice behaves exactly as before this table
+    existed; one with a saved choice is narrowed to it."""
+
+    def test_no_saved_selection_uses_every_platform_enabled_engine(self):
+        workspace_id = create_workspace(user_id=96010, domain='noselect.example',
+                                        brand_name='NoSelect')
+        with engine.connect() as conn:
+            scoped = [row['key'] for row, _ in scanning.enabled_engines(conn, workspace_id=workspace_id)]
+            unscoped = [row['key'] for row, _ in scanning.enabled_engines(conn)]
+        self.assertEqual(scoped, unscoped)
+        self.assertIn('perplexity', scoped)
+
+    def test_saved_selection_narrows_to_chosen_engines(self):
+        workspace_id = create_workspace(user_id=96011, domain='select.example',
+                                        brand_name='Select')
+        with engine.connect() as conn:
+            perplexity_id = conn.execute(select(engines_table.c.id).where(
+                engines_table.c.key == 'perplexity')).scalar_one()
+        now = __import__('datetime').datetime.utcnow()
+        with engine.begin() as conn:
+            conn.execute(insert(workspace_engines).values(
+                workspace_id=workspace_id, engine_id=perplexity_id, enabled=False,
+                created_at=now, updated_at=now,
+            ))
+        with engine.connect() as conn:
+            scoped = [row['key'] for row, _ in scanning.enabled_engines(conn, workspace_id=workspace_id)]
+            other_workspace = create_workspace(user_id=96012, domain='unaffected.example',
+                                               brand_name='Unaffected')
+            unaffected = [row['key'] for row, _ in scanning.enabled_engines(conn, workspace_id=other_workspace)]
+        self.assertNotIn('perplexity', scoped)
+        self.assertIn('perplexity', unaffected)
 
 
 class FailedEngineRunTests(unittest.TestCase):

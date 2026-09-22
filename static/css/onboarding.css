@@ -1,0 +1,52 @@
+/* Onboarding wizard layout, copied verbatim from index.html's own .onb demo
+   (a distinct two-pane layout, not the authenticated app's .shell rail).
+   Requires tokens.css and shell.css (buttons/panels/chips/fields/badges are
+   shared primitives from shell.css, not duplicated here). */
+
+.onb{min-height:100vh;display:grid;grid-template-columns:300px minmax(0,1fr)}
+.onbrail{background:var(--surface);border-right:1px solid var(--rule);padding:20px;display:flex;
+  flex-direction:column;gap:24px;position:sticky;top:0;height:100vh}
+.phases{display:flex;flex-direction:column;gap:1px;flex:1}
+.phase{display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:baseline;padding:9px 8px;
+  border-radius:var(--r);color:var(--ink-4)}
+.phase .pn{font-family:var(--font-data);font-size:10px}
+.phase .pt{font-size:12.5px}
+.phase[data-state="done"]{color:var(--ink-3)}
+.phase[data-state="done"] .pn{color:var(--good)}
+.phase[data-state="now"]{background:var(--brand-wash);color:var(--brand-ink);font-weight:600}
+.phase[data-state="now"] .pn{color:var(--brand)}
+.onbmain{display:grid;place-items:start center;padding:46px 22px 60px;min-width:0}
+.onbcard{width:100%;max-width:660px;display:flex;flex-direction:column;gap:20px}
+.onbcard h1{font-size:clamp(26px,4vw,30px);letter-spacing:-.035em}
+
+.killers{display:flex;gap:8px;align-items:center;font-family:var(--font-data);font-size:11px;
+  color:var(--ink-3);flex-wrap:wrap}
+.killers b{color:var(--ink-2);font-weight:400}
+
+.scanrow{display:grid;grid-template-columns:20px 1fr auto;gap:10px;align-items:center;padding:9px 10px;
+  font-size:12.5px;border-bottom:1px solid var(--rule);color:var(--ink-3)}
+.scanrow:last-child{border-bottom:0}
+.scanrow.active{color:var(--ink);background:var(--surface-2)}
+.scanrow.ok{color:var(--ink-2)}
+
+.revrow{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:8px 0;
+  border-bottom:1px solid var(--rule);font-size:12.5px}
+.revrow:last-child{border-bottom:0}
+.revrow.rejected{opacity:.4;text-decoration:line-through}
+
+.mini{background:none;border:1px solid var(--rule);border-radius:2px;width:23px;height:23px;
+  display:grid;place-items:center;cursor:pointer;color:var(--ink-3);flex:none}
+.mini[aria-pressed="true"]{background:var(--brand-wash);border-color:var(--brand-edge);color:var(--brand)}
+
+.kv{display:grid;grid-template-columns:minmax(96px,120px) 1fr;gap:5px 12px;font-size:12px}
+.kv dt{color:var(--ink-3);margin:0}
+.kv dd{margin:0;font-family:var(--font-data);font-size:11.5px}
+
+@media (max-width:1079px){
+  .onb{grid-template-columns:minmax(0,1fr)}
+  .onbrail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--rule);
+    flex-direction:row;align-items:center;gap:16px;overflow-x:auto}
+  .onbrail .why{display:none}
+  .phases{flex-direction:row;gap:4px}
+  .phase{grid-template-columns:auto;gap:2px;white-space:nowrap}
+}

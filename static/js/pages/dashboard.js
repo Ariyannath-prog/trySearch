@@ -91,13 +91,7 @@
     '<div class="empty" style="max-width:480px;margin:8vh auto 0;text-align:left">' +
     '  <b style="font-size:16px;display:block;margin-bottom:6px">Add your website to get started</b>' +
     '  <p style="margin:0 0 14px">trySearch tracks how AI engines answer questions about your brand. Add a website to create your first project.</p>' +
-    '  <form id="add-project-form">' +
-    '    <label>Website<input type="text" name="domain" placeholder="example.com" required></label>' +
-    '    <label style="margin-top:10px">Brand name<input type="text" name="brand_name" required></label>' +
-    '    <label style="margin-top:10px">Industry<input type="text" name="industry" placeholder="Optional"></label>' +
-    '    <button type="submit" class="btn" style="margin-top:14px">Create project</button>' +
-    '  </form>' +
-    '  <p class="form-error" id="add-project-error" hidden></p>' +
+    '  <a class="btn" href="/onboarding">Get started</a>' +
     '</div>';
 
   function boot() {
@@ -112,7 +106,6 @@
       state.projects = (res.body && res.body.projects) || [];
       if (!state.projects.length) {
         views.innerHTML = EMPTY_STATE_HTML;
-        wireEmptyStateForm();
         return;
       }
       views.innerHTML = VIEWS_HTML;
@@ -120,32 +113,6 @@
       var activeId = TS.shell.activeProjectId();
       var initial = state.projects.filter(function (p) { return String(p.id) === String(activeId); })[0] || state.projects[0];
       loadWorkspace(initial.id);
-    });
-  }
-
-  function wireEmptyStateForm() {
-    $('#add-project-form').addEventListener('submit', function (evt) {
-      evt.preventDefault();
-      var errorEl = $('#add-project-error');
-      errorEl.hidden = true;
-      var form = evt.target;
-      var data = {
-        domain: form.domain.value.trim(),
-        brand_name: form.brand_name.value.trim(),
-        industry: form.industry.value.trim()
-      };
-      TS.api.createProject(data).then(function (res) {
-        if (res.ok) {
-          try { localStorage.setItem('ts_active_project_id', String(res.body.project.id)); } catch (e) { /* ignore */ }
-          state.projects = [res.body.project];
-          $('#views').innerHTML = VIEWS_HTML;
-          wireDashboardControls();
-          loadWorkspace(res.body.project.id);
-        } else {
-          text(errorEl, (res.body && res.body.error) || 'Could not create that project.');
-          errorEl.hidden = false;
-        }
-      });
     });
   }
 

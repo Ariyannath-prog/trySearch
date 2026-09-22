@@ -44,10 +44,13 @@ def start_analytics_prompt_scan(workspace_id):
         # Provider-agnostic and DB-backed, matching run_prompt_scan_job's own
         # check - no engine name is ever hardcoded here. Which engine actually
         # answers, and whether its credential works, is decided per-prompt at
-        # execution time (app/scanning.py), not pre-guessed here.
-        if not enabled_engines(conn):
-            return jsonify({'error': 'No AI engine is configured. Configure a provider '
-                                      'credential in Admin → API Keys.'}), 503
+        # execution time (app/scanning.py), not pre-guessed here. Scoped to
+        # this workspace's own engine selection (workspace_engines), the same
+        # scope run_prompt_scan_job uses.
+        if not enabled_engines(conn, workspace_id=workspace_id):
+            return jsonify({'error': 'No AI engine is available for this project. Choose at '
+                                      'least one in onboarding, or ask an admin to configure '
+                                      'a provider credential.'}), 503
         prompt_count = conn.execute(select(func.count()).select_from(analytics_tracked_prompts).where(
             (analytics_tracked_prompts.c.workspace_id == workspace_id) &
             (analytics_tracked_prompts.c.active.is_(True))

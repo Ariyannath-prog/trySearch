@@ -122,6 +122,12 @@ def workspace_page():
         return redirect('/login')
     return send_from_directory(BASE_DIR, 'workspace.html')
 
+@pages_bp.route('/onboarding')
+def onboarding_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'onboarding.html')
+
 @pages_bp.route('/profile')
 def profile_page():
     if not session.get('user_id'):

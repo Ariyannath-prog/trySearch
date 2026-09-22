@@ -19,8 +19,10 @@ from app.models import (
     analytics_tracked_prompts,
     brand_aliases,
     competitors as competitors_table,
+    engines as engines_table,
     workspaces,
 )
+from app.scanning import credential_for_engine
 from app.tenancy import current_user_id, default_org_for_user, require_workspace
 from app.utils import normalise_domain, row_to_dict
 
@@ -48,10 +50,17 @@ def preview_onboarding_profile():
             'fallback': 'manual',
         }), 502
 
+    with engine.connect() as conn:
+        gemini_row = conn.execute(
+            select(engines_table.c.id, engines_table.c.provider_id)
+            .where(engines_table.c.key == 'google_gemini')
+        ).mappings().first()
+        credential = credential_for_engine(conn, dict(gemini_row)) if gemini_row else None
+
     try:
         profile = onboarding_service.generate_profile(
             domain, onboarding_service.visible_text(html),
-            call_model=call_gemini_text,
+            call_model=lambda system, user: call_gemini_text(system, user, api_key=credential),
         )
     except (onboarding_service.OnboardingError, ProviderAPIError) as error:
         # Manual entry is the fallback, not a silent half-profile.

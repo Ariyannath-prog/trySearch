@@ -116,13 +116,13 @@ def call_gemini_answer(prompt):
     return call_gemini(prompt, timeout_s=60)
 
 
-def call_gemini_text(system_prompt, user_prompt):
+def call_gemini_text(system_prompt, user_prompt, *, api_key=None):
     """Backward-compatible ungrounded Gemini helper for onboarding prompt generation."""
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = api_key or os.environ.get("GEMINI_API_KEY")
 
     if not api_key:
         raise ProviderAPIError(
-            "GEMINI_API_KEY is not configured."
+            "No Google Gemini provider credential is configured."
         )
 
     payload = {

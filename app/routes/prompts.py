@@ -29,7 +29,14 @@ import re
 from app.config import ANALYTICS_MAX_TRACKED_PROMPTS
 from app.db import engine
 from app.llm import open_model_settings
-from app.models import competitors, analytics_scan_schedules, analytics_topics, analytics_tracked_prompts
+from app.models import (
+    competitors,
+    analytics_scan_schedules,
+    analytics_topics,
+    analytics_tracked_prompts,
+    engines as engines_table,
+    workspace_engines,
+)
 from app.tenancy import require_workspace
 from app.scanning import next_schedule_time
 from app.utils import normalise_domain, row_to_dict
@@ -252,3 +259,78 @@ def update_analytics_scan_schedule(workspace_id):
                 workspace_id=workspace_id, last_run_at=None, created_at=now, **values,
             ))
     return jsonify({'tracking': analytics_tracking_payload(workspace_id)})
+
+@prompts_bp.route('/api/analytics/projects/<int:workspace_id>/engines', methods=['GET'])
+def analytics_engines_endpoint(workspace_id):
+    """Which platform-enabled engines this workspace has chosen to include.
+
+    Never returns credential/API-key data - onboarding's "choose engines"
+    step is a name + checkbox list only, per product decision.
+    """
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    with engine.connect() as conn:
+        engine_rows = conn.execute(
+            select(engines_table.c.id, engines_table.c.key, engines_table.c.display_name)
+            .where(engines_table.c.enabled).order_by(engines_table.c.id)
+        ).mappings().all()
+        selection = {
+            row['engine_id']: row['enabled']
+            for row in conn.execute(
+                select(workspace_engines.c.engine_id, workspace_engines.c.enabled)
+                .where(workspace_engines.c.workspace_id == workspace_id)
+            ).mappings()
+        }
+    # No saved selection yet: every platform-enabled engine defaults to
+    # included, matching enabled_engines()'s own "no rows = all enabled" rule.
+    has_selection = bool(selection)
+    engines_payload = [
+        {
+            'id': row['id'], 'key': row['key'], 'display_name': row['display_name'],
+            'enabled': selection.get(row['id'], False) if has_selection else True,
+        }
+        for row in engine_rows
+    ]
+    return jsonify({'engines': engines_payload})
+
+@prompts_bp.route('/api/analytics/projects/<int:workspace_id>/engines', methods=['PUT'])
+def update_analytics_engines(workspace_id):
+    """Save this workspace's engine selection as a complete snapshot.
+
+    Writes one row per currently platform-enabled engine (enabled or not),
+    so a workspace that has saved a choice never has an ambiguous gap for
+    enabled_engines() to guess at.
+    """
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    try:
+        selected_ids = {int(value) for value in (data.get('engine_ids') or [])}
+    except (TypeError, ValueError):
+        return jsonify({'error': 'engine_ids must be a list of integers.'}), 400
+    now = datetime.utcnow()
+    with engine.begin() as conn:
+        platform_engine_ids = [row[0] for row in conn.execute(
+            select(engines_table.c.id).where(engines_table.c.enabled)
+        ).all()]
+        existing = {
+            row['engine_id']: row['id']
+            for row in conn.execute(
+                select(workspace_engines.c.engine_id, workspace_engines.c.id)
+                .where(workspace_engines.c.workspace_id == workspace_id)
+            ).mappings()
+        }
+        for engine_id in platform_engine_ids:
+            row_enabled = engine_id in selected_ids
+            if engine_id in existing:
+                conn.execute(update(workspace_engines).where(
+                    workspace_engines.c.id == existing[engine_id]
+                ).values(enabled=row_enabled, updated_at=now))
+            else:
+                conn.execute(insert(workspace_engines).values(
+                    workspace_id=workspace_id, engine_id=engine_id, enabled=row_enabled,
+                    created_at=now, updated_at=now,
+                ))
+    return jsonify({'status': 'success'})
