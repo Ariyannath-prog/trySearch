@@ -225,6 +225,22 @@ def update_analytics_tracked_prompt(workspace_id, prompt_id):
         if len(prompt_text) < 8 or len(prompt_text) > 1000:
             return jsonify({'error': 'Enter a prompt between 8 and 1,000 characters.'}), 400
         values['prompt'] = prompt_text
+    if 'intent' in data:
+        intent = (data.get('intent') or 'Discovery').strip()[:80] or 'Discovery'
+        values['intent'] = intent
+    if 'topic_id' in data:
+        try:
+            topic_id = int(data['topic_id']) if data.get('topic_id') else None
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Choose a valid topic.'}), 400
+        if topic_id:
+            with engine.connect() as conn:
+                topic = conn.execute(select(analytics_topics.c.id).where(
+                    (analytics_topics.c.id == topic_id) & (analytics_topics.c.workspace_id == workspace_id)
+                )).scalar_one_or_none()
+            if not topic:
+                return jsonify({'error': 'The selected topic does not belong to this project.'}), 400
+        values['topic_id'] = topic_id
     with engine.begin() as conn:
         conn.execute(update(analytics_tracked_prompts).where(analytics_tracked_prompts.c.id == prompt_id).values(**values))
     return jsonify({'status': 'success'})

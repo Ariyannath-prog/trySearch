@@ -38,9 +38,8 @@
   display:grid;place-items:center;cursor:pointer;color:var(--ink-3);flex:none}
 .mini[aria-pressed="true"]{background:var(--brand-wash);border-color:var(--brand-edge);color:var(--brand)}
 
-.kv{display:grid;grid-template-columns:minmax(96px,120px) 1fr;gap:5px 12px;font-size:12px}
-.kv dt{color:var(--ink-3);margin:0}
-.kv dd{margin:0;font-family:var(--font-data);font-size:11.5px}
+/* .kv (brand fact definition list) moved to shell.css -- also used by the
+   Prompts page's evidence drawer. */
 
 @media (max-width:1079px){
   .onb{grid-template-columns:minmax(0,1fr)}

@@ -30,9 +30,27 @@
     },
     getReport: function (id) { return apiCall('/api/analytics/projects/' + id + '/report'); },
     getEvidence: function (id) { return apiCall('/api/analytics/projects/' + id + '/evidence'); },
+    getEvidenceAnswer: function (id, answerId) {
+      return apiCall('/api/analytics/projects/' + id + '/evidence/' + answerId);
+    },
+    getTracking: function (id) { return apiCall('/api/analytics/projects/' + id + '/tracking'); },
+    createTopic: function (id, name) {
+      return apiCall('/api/analytics/projects/' + id + '/topics',
+        { method: 'POST', body: JSON.stringify({ name: name }) });
+    },
+    deleteTopic: function (id, topicId) {
+      return apiCall('/api/analytics/projects/' + id + '/topics/' + topicId, { method: 'DELETE' });
+    },
     addTrackedPrompt: function (id, data) {
       return apiCall('/api/analytics/projects/' + id + '/tracked-prompts',
         { method: 'POST', body: JSON.stringify(data) });
+    },
+    updateTrackedPrompt: function (id, promptId, data) {
+      return apiCall('/api/analytics/projects/' + id + '/tracked-prompts/' + promptId,
+        { method: 'PATCH', body: JSON.stringify(data) });
+    },
+    deleteTrackedPrompt: function (id, promptId) {
+      return apiCall('/api/analytics/projects/' + id + '/tracked-prompts/' + promptId, { method: 'DELETE' });
     },
     startScan: function (id) {
       return apiCall('/api/analytics/projects/' + id + '/prompt-scans', { method: 'POST', body: '{}' });

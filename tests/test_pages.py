@@ -90,5 +90,26 @@ class OnboardingPageTests(unittest.TestCase):
             self.assertIn('text/html', response.content_type)
 
 
+class PromptIntelligencePageTests(unittest.TestCase):
+
+    def login(self, client, username):
+        response = client.post('/api/login', json={'username': username, 'password': PASSWORD})
+        self.assertEqual(response.status_code, 200, f'login failed for {username}')
+
+    def test_prompt_intelligence_redirects_anonymous_to_login(self):
+        with server_pg.app.test_client() as client:
+            response = client.get('/prompt-intelligence')
+            self.assertEqual(response.status_code, 302)
+            self.assertTrue(response.headers['Location'].endswith('/login'))
+
+    def test_prompt_intelligence_returns_200_for_logged_in_user(self):
+        make_user('pages_prompt_intel_user')
+        with server_pg.app.test_client() as client:
+            self.login(client, 'pages_prompt_intel_user')
+            response = client.get('/prompt-intelligence')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('text/html', response.content_type)
+
+
 if __name__ == '__main__':
     unittest.main()
