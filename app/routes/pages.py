@@ -116,6 +116,12 @@ def citations_page():
         return redirect('/login')
     return send_from_directory(BASE_DIR, 'citations.html')
 
+@pages_bp.route('/competitors')
+def competitors_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'competitors.html')
+
 @pages_bp.route('/content-studio')
 def content_studio_page():
     if not session.get('user_id'):

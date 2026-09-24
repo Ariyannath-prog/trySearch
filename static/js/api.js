@@ -74,5 +74,20 @@
         { method: 'PUT', body: JSON.stringify(data) });
     },
     getCitations: function (id) { return apiCall('/api/analytics/projects/' + id + '/citations'); },
+    getCompetitorIntelligence: function (id) {
+      return apiCall('/api/analytics/projects/' + id + '/competitors');
+    },
+    addCompetitor: function (id, data) {
+      return apiCall('/api/analytics/projects/' + id + '/competitors',
+        { method: 'POST', body: JSON.stringify(data) });
+    },
+    updateCompetitor: function (id, competitorId, data) {
+      return apiCall('/api/analytics/projects/' + id + '/competitors/' + competitorId,
+        { method: 'PATCH', body: JSON.stringify(data) });
+    },
+    deleteCompetitor: function (id, competitorId) {
+      return apiCall('/api/analytics/projects/' + id + '/competitors/' + competitorId,
+        { method: 'DELETE' });
+    },
   };
 })();

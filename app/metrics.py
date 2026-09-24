@@ -14,9 +14,9 @@ from app.crawler.fetch import normalise_site_host
 from app.db import engine
 from app.extraction.mentions import domain_matches, project_brand_aliases, text_mentions_alias
 from app.jobs import latest_site_audit
-from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts, engines
-from app.rollup import SCHEDULED_RUN_TYPE, latest_metrics, latest_metrics_all_engines
-from app.stats import describe_delta, metric, score_envelope
+from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, competitors, mentions as mentions_table, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts, engines
+from app.rollup import SCHEDULED_RUN_TYPE, latest_metrics, latest_metrics_all_engines, score_from_counts
+from app.stats import MIN_ANSWERS_FOR_SCORE, describe_delta, metric, score_envelope
 from app.tenancy import workspace_for_member
 from app.utils import row_to_dict, to_iso
 
@@ -556,3 +556,241 @@ def citation_listing(workspace_id, conn=None):
         listing.append(entry)
     listing.sort(key=lambda entry: entry['citation_count'], reverse=True)
     return listing
+
+
+def _entity_metrics(*, total, mention_rows, cited_answer_ids):
+    """mention_rows: [(answer_id, rank_or_None), ...] for one entity.
+
+    Wraps rollup.score_from_counts() - the exact PRD §13 formula the brand's
+    own official Visibility Score is computed with - so a competitor's score
+    is arithmetically comparable to the brand's, not a lookalike computed a
+    different way.
+    """
+    mentioned = len(mention_rows)
+    reciprocal_rank_sum = sum(1.0 / r for _, r in mention_rows if r)
+    scored = score_from_counts(
+        total_answers=total, mentioned=mentioned,
+        reciprocal_rank_sum=reciprocal_rank_sum, cited=len(cited_answer_ids),
+    )
+    ranks = [r for _, r in mention_rows if r]
+    return {
+        'mention_rate': metric(mentioned, total),
+        'citation_rate': metric(len(cited_answer_ids), total),
+        'average_rank': round(sum(ranks) / len(ranks), 2) if ranks else None,
+        'visibility_score': scored['visibility_score'] if total >= MIN_ANSWERS_FOR_SCORE else None,
+        'mention_count': mentioned,
+        '_day_metrics': scored,  # only used internally for the trend series
+    }
+
+
+def competitor_intelligence(workspace_id, conn=None):
+    """Competitor comparison: the live `competitors` table plus the brand,
+    scored on the exact cohort and formula metrics_daily uses for the brand's
+    own Visibility Score (workspace-scoped, run_type='scheduled' only - the
+    same restriction rollup.collect_counts() applies, so a competitor's score
+    is on equal footing with the brand's, not measured more generously).
+
+    Three flat queries, no N+1: measured answers (+ the brand's own stored
+    extraction flags, same shape as collect_counts()), competitor mention
+    rows (already stored by the extraction pipeline - no text is re-scanned),
+    and already-classified 'competitor' source rows (domain-matched to a
+    specific tracked competitor in Python, the same way brand_rankings()
+    matches a domain against a single brand).
+    """
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        project = conn.execute(select(workspaces).where(
+            workspaces.c.id == workspace_id)).mappings().first()
+        competitor_rows = [row_to_dict(row) for row in conn.execute(
+            select(competitors).where(competitors.c.workspace_id == workspace_id)
+            .order_by(competitors.c.name)).mappings().all()]
+
+        answers = conn.execute(
+            select(
+                analytics_provider_answers.c.id,
+                analytics_provider_answers.c.provider,
+                analytics_provider_answers.c.created_at,
+                func.coalesce(analytics_provider_answers.c.prompt_text,
+                              analytics_tracked_prompts.c.prompt).label('prompt'),
+                extractions.c.brand_mentioned, extractions.c.brand_rank,
+                extractions.c.brand_cited,
+            )
+            .select_from(analytics_provider_answers)
+            .join(analytics_prompt_scan_runs,
+                  analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+            .join(extractions,
+                  (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+            .outerjoin(analytics_tracked_prompts,
+                       analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+            .where(
+                (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+                & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+            )
+        ).mappings().all()
+        answers_by_id = {row['id']: row for row in answers}
+
+        competitor_mention_rows, competitor_source_rows = [], []
+        if answers:
+            competitor_mention_rows = conn.execute(
+                select(mentions_table.c.competitor_id, mentions_table.c.rank,
+                       extractions.c.answer_id)
+                .select_from(mentions_table)
+                .join(extractions,
+                      (extractions.c.id == mentions_table.c.extraction_id) & extractions.c.is_current)
+                .join(analytics_provider_answers,
+                      analytics_provider_answers.c.id == extractions.c.answer_id)
+                .join(analytics_prompt_scan_runs,
+                      analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+                .where(
+                    (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+                    & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+                    & (mentions_table.c.entity_type == 'competitor')
+                )
+            ).mappings().all()
+
+            competitor_source_rows = conn.execute(
+                select(analytics_answer_sources.c.answer_id, analytics_answer_sources.c.url)
+                .select_from(analytics_answer_sources)
+                .join(analytics_provider_answers,
+                      analytics_provider_answers.c.id == analytics_answer_sources.c.answer_id)
+                .join(analytics_prompt_scan_runs,
+                      analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+                .where(
+                    (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+                    & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+                    & (analytics_answer_sources.c.category == 'competitor')
+                )
+            ).mappings().all()
+    finally:
+        if own_conn:
+            conn.close()
+
+    total = len(answers)
+
+    mentions_by_competitor = {}
+    mentions_by_answer = {}
+    for row in competitor_mention_rows:
+        mentions_by_competitor.setdefault(row['competitor_id'], []).append(
+            (row['answer_id'], row['rank']))
+        mentions_by_answer.setdefault(row['answer_id'], []).append(
+            (row['competitor_id'], row['rank']))
+
+    urls_by_answer = {}
+    for row in competitor_source_rows:
+        urls_by_answer.setdefault(row['answer_id'], []).append(row['url'])
+
+    def cited_answer_ids_for(domains):
+        if not domains:
+            return set()
+        return {
+            answer_id for answer_id, urls in urls_by_answer.items()
+            if any(domain_matches(url, domain) for url in urls for domain in domains)
+        }
+
+    # -- entities -----------------------------------------------------------
+    brand_mention_rows = [
+        (row['id'], row['brand_rank']) for row in answers if row['brand_mentioned']
+    ]
+    brand_cited_ids = {row['id'] for row in answers if row['brand_cited']}
+    brand_metrics = _entity_metrics(
+        total=total, mention_rows=brand_mention_rows, cited_answer_ids=brand_cited_ids)
+    entities = [{
+        'id': 'brand', 'name': project['brand_name'] if project else None,
+        'domain': project['domain'] if project else None, 'tracked': True,
+        **{k: v for k, v in brand_metrics.items() if not k.startswith('_')},
+    }]
+
+    for competitor in competitor_rows:
+        mention_rows = mentions_by_competitor.get(competitor['id'], [])
+        cited_ids = cited_answer_ids_for(competitor.get('domains'))
+        entity_metrics = _entity_metrics(
+            total=total, mention_rows=mention_rows, cited_answer_ids=cited_ids)
+        entities.append({
+            'id': competitor['id'], 'name': competitor['name'],
+            'domain': (competitor.get('domains') or [None])[0],
+            'domains': competitor.get('domains') or [], 'tracked': False,
+            **{k: v for k, v in entity_metrics.items() if not k.startswith('_')},
+        })
+
+    total_mentions = sum(e['mention_count'] for e in entities)
+    for entity in entities:
+        entity['share_of_voice'] = (
+            round(entity['mention_count'] / total_mentions, 4) if total_mentions else None)
+    entities.sort(key=lambda e: (
+        e['mention_rate']['value'] is None, -(e['mention_rate']['value'] or 0),
+        not e['tracked'], (e['name'] or '').casefold(),
+    ))
+    for rank, entity in enumerate(entities, 1):
+        entity['rank'] = rank
+
+    # -- trend, bucketed by UTC day -----------------------------------------
+    def day_of(answer_id):
+        return answers_by_id[answer_id]['created_at'].date()
+
+    days_totals = {}
+    for row in answers:
+        d = row['created_at'].date()
+        days_totals[d] = days_totals.get(d, 0) + 1
+
+    def day_series(mention_rows_by_day, cited_ids_by_day):
+        series = []
+        for d in sorted(days_totals):
+            day_total = days_totals[d]
+            day_mentions = mention_rows_by_day.get(d, [])
+            day_cited = cited_ids_by_day.get(d, set())
+            scored = score_from_counts(
+                total_answers=day_total, mentioned=len(day_mentions),
+                reciprocal_rank_sum=sum(1.0 / r for r in day_mentions if r),
+                cited=len(day_cited),
+            )
+            series.append({
+                'date': d.isoformat(),
+                'visibility_score': scored['visibility_score'],
+                'mention_rate': scored['mention_rate'],
+            })
+        return series
+
+    brand_ranks_by_day = {}
+    brand_cited_by_day = {}
+    for row in answers:
+        d = row['created_at'].date()
+        if row['brand_mentioned']:
+            brand_ranks_by_day.setdefault(d, []).append(row['brand_rank'])
+        if row['brand_cited']:
+            brand_cited_by_day.setdefault(d, set()).add(row['id'])
+    trend = {'brand': day_series(brand_ranks_by_day, brand_cited_by_day)}
+
+    for competitor in competitor_rows:
+        ranks_by_day = {}
+        for answer_id, rank in mentions_by_competitor.get(competitor['id'], []):
+            ranks_by_day.setdefault(day_of(answer_id), []).append(rank)
+        cited_ids = cited_answer_ids_for(competitor.get('domains'))
+        cited_by_day = {}
+        for answer_id in cited_ids:
+            cited_by_day.setdefault(day_of(answer_id), set()).add(answer_id)
+        trend[str(competitor['id'])] = day_series(ranks_by_day, cited_by_day)
+
+    # -- prompts where a competitor outperforms the brand --------------------
+    outperforms = []
+    competitor_names = {c['id']: c['name'] for c in competitor_rows}
+    for row in answers:
+        brand_rank = row['brand_rank'] if row['brand_mentioned'] else None
+        for competitor_id, competitor_rank in mentions_by_answer.get(row['id'], []):
+            if competitor_rank is None:
+                continue
+            if brand_rank is not None and competitor_rank >= brand_rank:
+                continue
+            outperforms.append({
+                'answer_id': row['id'], 'prompt': row['prompt'], 'engine': row['provider'],
+                'created_at': to_iso(row['created_at']),
+                'competitor_id': competitor_id,
+                'competitor_name': competitor_names.get(competitor_id),
+                'competitor_rank': competitor_rank, 'brand_rank': brand_rank,
+            })
+    outperforms.sort(key=lambda o: o['created_at'], reverse=True)
+
+    return {
+        'measured_answer_count': total, 'threshold': MIN_ANSWERS_FOR_SCORE,
+        'entities': entities, 'trend': trend, 'outperforms': outperforms,
+    }

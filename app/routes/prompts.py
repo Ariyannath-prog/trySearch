@@ -29,6 +29,7 @@ import re
 from app.config import ANALYTICS_MAX_TRACKED_PROMPTS
 from app.db import engine
 from app.llm import open_model_settings
+from app.metrics import competitor_intelligence
 from app.models import (
     competitors,
     analytics_scan_schedules,
@@ -124,6 +125,14 @@ def delete_analytics_topic(workspace_id, topic_id):
         conn.execute(analytics_topics.delete().where(analytics_topics.c.id == topic_id))
     return jsonify({'status': 'success'})
 
+@prompts_bp.route('/api/analytics/projects/<int:workspace_id>/competitors', methods=['GET'])
+def analytics_competitor_intelligence_endpoint(workspace_id):
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    return jsonify({'project': row_to_dict(access.workspace),
+                    'intelligence': competitor_intelligence(workspace_id)})
+
 @prompts_bp.route('/api/analytics/projects/<int:workspace_id>/competitors', methods=['POST'])
 def create_analytics_competitor(workspace_id):
     access, error = require_workspace(workspace_id)
@@ -151,6 +160,41 @@ def create_analytics_competitor(workspace_id):
             competitors.c.id == result.inserted_primary_key[0]
         )).mappings().first()
     return jsonify({'competitor': row_to_dict(row)}), 201
+
+@prompts_bp.route('/api/analytics/projects/<int:workspace_id>/competitors/<int:competitor_id>', methods=['PATCH'])
+def update_analytics_competitor(workspace_id, competitor_id):
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    with engine.connect() as conn:
+        exists = conn.execute(select(competitors.c.id).where(
+            (competitors.c.id == competitor_id) & (competitors.c.workspace_id == workspace_id)
+        )).scalar_one_or_none()
+    if not exists:
+        return jsonify({'error': 'Competitor not found.'}), 404
+    data = request.get_json(silent=True) or {}
+    values = {}
+    if 'name' in data:
+        name = (data.get('name') or '').strip()
+        if not name or len(name) > 180:
+            return jsonify({'error': 'Enter a competitor name between 1 and 180 characters.'}), 400
+        values['name'] = name
+    if 'domain' in data:
+        domain_value = (data.get('domain') or '').strip()
+        domain = normalise_domain(domain_value) if domain_value else None
+        if domain_value and not domain:
+            return jsonify({'error': 'Enter a valid competitor domain or leave it blank.'}), 400
+        values['domains'] = [domain] if domain else []
+    if not values:
+        return jsonify({'error': 'Nothing to update.'}), 400
+    try:
+        with engine.begin() as conn:
+            conn.execute(update(competitors).where(competitors.c.id == competitor_id).values(**values))
+    except IntegrityError:
+        return jsonify({'error': 'That competitor is already tracked.'}), 409
+    with engine.connect() as conn:
+        row = conn.execute(select(competitors).where(competitors.c.id == competitor_id)).mappings().first()
+    return jsonify({'competitor': row_to_dict(row)})
 
 @prompts_bp.route('/api/analytics/projects/<int:workspace_id>/competitors/<int:competitor_id>', methods=['DELETE'])
 def delete_analytics_competitor(workspace_id, competitor_id):
