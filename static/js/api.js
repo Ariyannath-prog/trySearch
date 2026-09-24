@@ -89,5 +89,9 @@
       return apiCall('/api/analytics/projects/' + id + '/competitors/' + competitorId,
         { method: 'DELETE' });
     },
+    getAudit: function (id) { return apiCall('/api/analytics/projects/' + id + '/audit'); },
+    startAudit: function (id) {
+      return apiCall('/api/analytics/projects/' + id + '/audits', { method: 'POST', body: '{}' });
+    },
   };
 })();

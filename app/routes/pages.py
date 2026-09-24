@@ -122,6 +122,12 @@ def competitors_page():
         return redirect('/login')
     return send_from_directory(BASE_DIR, 'competitors.html')
 
+@pages_bp.route('/site-audit')
+def site_audit_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'site_audit.html')
+
 @pages_bp.route('/content-studio')
 def content_studio_page():
     if not session.get('user_id'):
