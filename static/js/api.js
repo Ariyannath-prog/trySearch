@@ -93,5 +93,19 @@
     startAudit: function (id) {
       return apiCall('/api/analytics/projects/' + id + '/audits', { method: 'POST', body: '{}' });
     },
+    getSearchConsole: function (id) {
+      return apiCall('/api/analytics/projects/' + id + '/search-console');
+    },
+    disconnectSearchConsole: function (id) {
+      return apiCall('/api/analytics/projects/' + id + '/search-console', { method: 'DELETE' });
+    },
+    selectSearchConsoleProperty: function (id, siteUrl) {
+      return apiCall('/api/analytics/projects/' + id + '/search-console/property',
+        { method: 'PUT', body: JSON.stringify({ site_url: siteUrl }) });
+    },
+    syncSearchConsole: function (id, data) {
+      return apiCall('/api/analytics/projects/' + id + '/search-console/sync',
+        { method: 'POST', body: JSON.stringify(data || {}) });
+    },
   };
 })();

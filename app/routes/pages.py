@@ -128,6 +128,12 @@ def site_audit_page():
         return redirect('/login')
     return send_from_directory(BASE_DIR, 'site_audit.html')
 
+@pages_bp.route('/search-console')
+def search_console_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'search_console.html')
+
 @pages_bp.route('/content-studio')
 def content_studio_page():
     if not session.get('user_id'):
