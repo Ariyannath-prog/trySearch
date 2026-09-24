@@ -107,5 +107,6 @@
       return apiCall('/api/analytics/projects/' + id + '/search-console/sync',
         { method: 'POST', body: JSON.stringify(data || {}) });
     },
+    getMentions: function (id) { return apiCall('/api/analytics/projects/' + id + '/mentions'); },
   };
 })();

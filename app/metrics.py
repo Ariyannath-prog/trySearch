@@ -794,3 +794,116 @@ def competitor_intelligence(workspace_id, conn=None):
         'measured_answer_count': total, 'threshold': MIN_ANSWERS_FOR_SCORE,
         'entities': entities, 'trend': trend, 'outperforms': outperforms,
     }
+
+
+def _context_snippet(text_value, offset, radius=80):
+    """A window of the stored answer text around a real character offset -
+    never a fabricated excerpt, and never the whole answer (that's what the
+    evidence drawer is for)."""
+    if not text_value or offset is None:
+        return None
+    start = max(0, offset - radius)
+    end = min(len(text_value), offset + radius)
+    snippet = text_value[start:end].strip()
+    if start > 0:
+        snippet = '…' + snippet
+    if end < len(text_value):
+        snippet = snippet + '…'
+    return snippet
+
+
+def mention_listing(workspace_id, conn=None, limit=500):
+    """Every measured answer for a workspace, across every run - not just the
+    latest one (latest_prompt_evidence) or one scan (provider_evidence_rows).
+    Reuses answer_derivations() for the brand fields it already computes
+    correctly rather than re-deriving them, and reads the mentions table
+    (already written by the extraction pipeline) for context and competitor
+    attribution - nothing here re-scans answer text.
+    """
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        answers = conn.execute(
+            select(
+                analytics_provider_answers.c.id,
+                analytics_provider_answers.c.provider,
+                analytics_provider_answers.c.answer_text,
+                analytics_provider_answers.c.created_at,
+                analytics_provider_answers.c.scan_run_id,
+                analytics_prompt_scan_runs.c.run_type,
+                analytics_prompt_scan_runs.c.region,
+                func.coalesce(analytics_provider_answers.c.prompt_text,
+                              analytics_tracked_prompts.c.prompt).label('prompt'),
+                func.coalesce(analytics_provider_answers.c.topic_name,
+                              analytics_topics.c.name).label('topic_name'),
+            )
+            .select_from(analytics_provider_answers)
+            .join(analytics_prompt_scan_runs,
+                  analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+            .outerjoin(analytics_tracked_prompts,
+                       analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+            .outerjoin(analytics_topics,
+                       analytics_tracked_prompts.c.topic_id == analytics_topics.c.id)
+            .where(analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+            .order_by(desc(analytics_provider_answers.c.created_at))
+            .limit(limit)
+        ).mappings().all()
+        answer_ids = [row['id'] for row in answers]
+        derived = answer_derivations(answer_ids, conn)
+
+        brand_offsets = {}
+        competitor_names = {}
+        mentions_by_answer = {}
+        if answer_ids:
+            for row in conn.execute(
+                select(extractions.c.answer_id, mentions_table.c.char_offset)
+                .select_from(mentions_table)
+                .join(extractions,
+                      (extractions.c.id == mentions_table.c.extraction_id) & extractions.c.is_current)
+                .where(
+                    (extractions.c.answer_id.in_(answer_ids))
+                    & (mentions_table.c.entity_type == 'brand')
+                )
+            ).mappings():
+                brand_offsets[row['answer_id']] = row['char_offset']
+
+            competitor_names = dict(conn.execute(
+                select(competitors.c.id, competitors.c.name)
+                .where(competitors.c.workspace_id == workspace_id)
+            ).all())
+
+            for row in conn.execute(
+                select(extractions.c.answer_id, mentions_table.c.competitor_id,
+                       mentions_table.c.rank)
+                .select_from(mentions_table)
+                .join(extractions,
+                      (extractions.c.id == mentions_table.c.extraction_id) & extractions.c.is_current)
+                .where(
+                    (extractions.c.answer_id.in_(answer_ids))
+                    & (mentions_table.c.entity_type == 'competitor')
+                )
+            ).mappings():
+                mentions_by_answer.setdefault(row['answer_id'], []).append({
+                    'competitor_id': row['competitor_id'],
+                    'name': competitor_names.get(row['competitor_id']),
+                    'rank': row['rank'],
+                })
+    finally:
+        if own_conn:
+            conn.close()
+
+    listing = []
+    for row in answers:
+        item = dict(row)
+        item['id'] = row['id']
+        item['created_at'] = to_iso(row['created_at'])
+        item.update(derived.get(row['id'], {}))
+        item['context'] = _context_snippet(row['answer_text'], brand_offsets.get(row['id']))
+        item['competitors'] = mentions_by_answer.get(row['id'], [])
+        answer_text = item.pop('answer_text', None)
+        item['answer_preview'] = (
+            (answer_text[:220].rstrip() + '…') if answer_text and len(answer_text) > 220
+            else answer_text
+        )
+        listing.append(item)
+    return listing

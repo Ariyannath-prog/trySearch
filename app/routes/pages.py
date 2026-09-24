@@ -134,6 +134,12 @@ def search_console_page():
         return redirect('/login')
     return send_from_directory(BASE_DIR, 'search_console.html')
 
+@pages_bp.route('/mentions')
+def mentions_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'mentions.html')
+
 @pages_bp.route('/content-studio')
 def content_studio_page():
     if not session.get('user_id'):
