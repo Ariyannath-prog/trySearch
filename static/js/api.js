@@ -69,5 +69,9 @@
       return apiCall('/api/analytics/projects/' + id + '/engines',
         { method: 'PUT', body: JSON.stringify({ engine_ids: engineIds }) });
     },
+    updateSchedule: function (id, data) {
+      return apiCall('/api/analytics/projects/' + id + '/scan-schedule',
+        { method: 'PUT', body: JSON.stringify(data) });
+    },
   };
 })();

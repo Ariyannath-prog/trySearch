@@ -139,6 +139,19 @@ class ScoreSuppressionTests(unittest.TestCase):
             self.assertIn('n', payload[key], f'{key} must carry its sample size')
             self.assertEqual(payload[key]['n'], 40)
 
+    def test_share_of_voice_is_read_from_the_row_with_no_fabricated_interval(self):
+        row = {'answer_count': 40, 'mention_rate': 0.5, 'citation_rate': 0.25,
+               'visibility_score': 50.0, 'sov': 0.42}
+        payload = stats.score_envelope(row)
+        self.assertEqual(payload['sov']['value'], 0.42)
+        self.assertEqual(payload['sov']['n'], 40)
+        self.assertNotIn('low', payload['sov'])
+        self.assertNotIn('high', payload['sov'])
+
+    def test_share_of_voice_is_none_when_the_row_has_none(self):
+        payload = stats.score_envelope(None)
+        self.assertIsNone(payload['sov']['value'])
+
 
 if __name__ == '__main__':
     unittest.main()

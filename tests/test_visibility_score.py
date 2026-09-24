@@ -264,3 +264,80 @@ class UtcDayBoundaryTests(unittest.TestCase):
         # And the local date is only safe when it happens to agree with UTC.
         on_utc_day = rollup.rollup_workspace_day(workspace_id, stamped.date())
         self.assertEqual(on_utc_day['answer_count'], 4)
+
+
+def seed_answer_with_topic(workspace_id, *, topic_name, mentioned, cited,
+                           run_type='scheduled', when=None):
+    """One run, one answer, tagged with a topic - the shape topic_breakdown()
+    groups by. Deliberately separate from seed_answers() above rather than
+    extending it, since that helper is shared by many other tests."""
+    now = when or datetime.utcnow()
+    label = topic_name or 'general'
+    with engine.begin() as conn:
+        prompt_id = conn.execute(insert(analytics_tracked_prompts).values(
+            workspace_id=workspace_id, topic_id=None, prompt='best tools for ' + label,
+            intent='Discovery', active=True, created_at=now, updated_at=now,
+        )).inserted_primary_key[0]
+        scan_id = conn.execute(insert(analytics_prompt_scan_runs).values(
+            workspace_id=workspace_id, job_id=None, provider='Perplexity', model='m',
+            region=None, competitor_snapshot='[]', status='succeeded',
+            run_type=run_type, prompt_count=1, completed_count=1,
+            mention_rate=None, citation_rate=None, source_presence_rate=None,
+            share_of_voice=None, recommendation_summary=None, error=None,
+            created_at=now, completed_at=now,
+        )).inserted_primary_key[0]
+        answer_id = conn.execute(insert(analytics_provider_answers).values(
+            scan_run_id=scan_id, prompt_id=prompt_id, prompt_text='best tools for ' + label,
+            prompt_intent='Discovery', topic_name=topic_name, provider='Perplexity',
+            model='m', status='ok', search_request_id=None, answer_request_id=None,
+            answer_text='text', raw_response='{}', latency_ms=1, error=None,
+            created_at=now, completed_at=now,
+        )).inserted_primary_key[0]
+        conn.execute(insert(extractions).values(
+            answer_id=answer_id, extractor_version='test', is_current=True,
+            brand_mentioned=mentioned, brand_rank=1 if mentioned else None,
+            brand_cited=cited, created_at=now,
+        ))
+    return scan_id
+
+
+class TopicBreakdownTests(unittest.TestCase):
+    """app/metrics.py::topic_breakdown - the AI Visibility page's per-topic rates."""
+
+    def test_groups_scheduled_answers_by_topic(self):
+        from app.metrics import topic_breakdown
+        workspace_id = create_workspace(user_id=95010, domain='topics.example',
+                                        brand_name='Topics')
+        seed_answer_with_topic(workspace_id, topic_name='Pricing', mentioned=True, cited=True)
+        seed_answer_with_topic(workspace_id, topic_name='Pricing', mentioned=False, cited=False)
+        seed_answer_with_topic(workspace_id, topic_name='Support', mentioned=True, cited=False)
+
+        rows = {row['topic']: row for row in topic_breakdown(workspace_id)}
+        self.assertEqual(set(rows.keys()), {'Pricing', 'Support'})
+        self.assertEqual(rows['Pricing']['mention_rate']['n'], 2)
+        self.assertAlmostEqual(rows['Pricing']['mention_rate']['value'], 0.5)
+        self.assertEqual(rows['Support']['mention_rate']['n'], 1)
+        self.assertAlmostEqual(rows['Support']['mention_rate']['value'], 1.0)
+
+    def test_excludes_on_demand_runs(self):
+        """Same run_type restriction metrics_daily itself uses - an on-demand
+        "Run scan" click must not feed this any more than it feeds the
+        official Visibility Score."""
+        from app.metrics import topic_breakdown
+        workspace_id = create_workspace(user_id=95011, domain='ondemandtopic.example',
+                                        brand_name='OnDemandTopic')
+        seed_answer_with_topic(workspace_id, topic_name='Pricing', mentioned=True, cited=True,
+                               run_type='on_demand')
+
+        rows = topic_breakdown(workspace_id)
+        self.assertEqual(rows, [])
+
+    def test_untagged_prompts_are_not_dropped(self):
+        from app.metrics import topic_breakdown
+        workspace_id = create_workspace(user_id=95012, domain='untagged.example',
+                                        brand_name='Untagged')
+        seed_answer_with_topic(workspace_id, topic_name=None, mentioned=True, cited=False)
+
+        rows = {row['topic']: row for row in topic_breakdown(workspace_id)}
+        self.assertIn('Untagged', rows)
+        self.assertEqual(rows['Untagged']['mention_rate']['n'], 1)

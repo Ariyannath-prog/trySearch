@@ -15,8 +15,8 @@ from app.db import engine
 from app.extraction.mentions import domain_matches, project_brand_aliases, text_mentions_alias
 from app.jobs import latest_site_audit
 from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts, engines
-from app.rollup import latest_metrics, latest_metrics_all_engines
-from app.stats import describe_delta, score_envelope
+from app.rollup import SCHEDULED_RUN_TYPE, latest_metrics, latest_metrics_all_engines
+from app.stats import describe_delta, metric, score_envelope
 from app.tenancy import workspace_for_member
 from app.utils import row_to_dict
 
@@ -68,7 +68,62 @@ def analytics_report(workspace_id, user_id):
         'engines': [row_to_dict(row) for row in per_engine],
         # Site health is a property of the website, not an engine result.
         'site_health': latest_site_audit(workspace_id),
+        'topic_breakdown': topic_breakdown(workspace_id),
     }
+
+
+def topic_breakdown(workspace_id, conn=None):
+    """Mention/citation rate per topic, scheduled runs only.
+
+    Same run_type restriction collect_counts() uses for metrics_daily itself
+    (PRD §13: on-demand runs are excluded so someone actively testing a
+    change doesn't bias the numbers) - kept consistent rather than inventing
+    a second methodology. Reuses app.stats.metric() for the same
+    {value,low,high,n} envelope every other rate in the product uses.
+    """
+    query = (
+        select(
+            analytics_provider_answers.c.topic_name,
+            extractions.c.brand_mentioned,
+            extractions.c.brand_cited,
+        )
+        .select_from(analytics_provider_answers)
+        .join(analytics_prompt_scan_runs,
+              analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+        .join(extractions,
+              (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+        .where(
+            (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+            & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+        )
+    )
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        rows = conn.execute(query).mappings().all()
+    finally:
+        if own_conn:
+            conn.close()
+
+    buckets = {}
+    for row in rows:
+        key = row['topic_name'] or 'Untagged'
+        bucket = buckets.setdefault(key, {'total': 0, 'mentioned': 0, 'cited': 0})
+        bucket['total'] += 1
+        if row['brand_mentioned']:
+            bucket['mentioned'] += 1
+        if row['brand_cited']:
+            bucket['cited'] += 1
+
+    return [
+        {
+            'topic': name,
+            'mention_rate': metric(bucket['mentioned'], bucket['total']),
+            'citation_rate': metric(bucket['cited'], bucket['total']),
+        }
+        for name, bucket in sorted(buckets.items())
+    ]
+
 
 def answer_derivations(answer_ids, conn):
     """Per-answer values that used to be flat columns on analytics_provider_answers.

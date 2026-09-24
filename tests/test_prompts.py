@@ -220,5 +220,51 @@ class TopicCRUDTests(PromptsTestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class ScanScheduleTests(PromptsTestCase):
+    """PUT .../scan-schedule - the AI Visibility page's recurring-scan control.
+    No route-level test existed for this before this milestone."""
+
+    def test_enabling_a_schedule_sets_next_run_at(self):
+        _user_id, workspace_id, username = self.new_workspace('scheduleon')
+        with server_pg.app.test_client() as client:
+            self.login(client, username)
+            response = client.put(
+                f'/api/analytics/projects/{workspace_id}/scan-schedule',
+                json={'enabled': True, 'frequency': 'weekly', 'region': 'US'},
+            )
+            self.assertEqual(response.status_code, 200)
+            schedule = response.get_json()['tracking']['schedule']
+            self.assertTrue(schedule['enabled'])
+            self.assertEqual(schedule['frequency'], 'weekly')
+            self.assertEqual(schedule['region'], 'US')
+            self.assertIsNotNone(schedule['next_run_at'])
+
+    def test_disabling_a_schedule_clears_next_run_at(self):
+        _user_id, workspace_id, username = self.new_workspace('scheduleoff')
+        with server_pg.app.test_client() as client:
+            self.login(client, username)
+            client.put(
+                f'/api/analytics/projects/{workspace_id}/scan-schedule',
+                json={'enabled': True, 'frequency': 'daily'},
+            )
+            response = client.put(
+                f'/api/analytics/projects/{workspace_id}/scan-schedule',
+                json={'enabled': False, 'frequency': 'daily'},
+            )
+            schedule = response.get_json()['tracking']['schedule']
+            self.assertFalse(schedule['enabled'])
+            self.assertIsNone(schedule['next_run_at'])
+
+    def test_invalid_frequency_is_rejected(self):
+        _user_id, workspace_id, username = self.new_workspace('schedulebadfreq')
+        with server_pg.app.test_client() as client:
+            self.login(client, username)
+            response = client.put(
+                f'/api/analytics/projects/{workspace_id}/scan-schedule',
+                json={'enabled': True, 'frequency': 'hourly'},
+            )
+        self.assertEqual(response.status_code, 400)
+
+
 if __name__ == '__main__':
     unittest.main()
