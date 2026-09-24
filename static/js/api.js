@@ -73,5 +73,6 @@
       return apiCall('/api/analytics/projects/' + id + '/scan-schedule',
         { method: 'PUT', body: JSON.stringify(data) });
     },
+    getCitations: function (id) { return apiCall('/api/analytics/projects/' + id + '/citations'); },
   };
 })();

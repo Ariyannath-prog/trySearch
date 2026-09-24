@@ -28,6 +28,7 @@ from app.db import engine
 from app.metrics import (
     analytics_report,
     citation_domain_rollup,
+    citation_listing,
     competitor_citation_gaps,
 )
 from app.models import memberships, analytics_answer_sources, analytics_audit_findings, analytics_audit_jobs, analytics_audit_pages, competitors, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_rag_chunks, analytics_rag_documents, analytics_rag_insights, analytics_scan_schedules, analytics_site_audits, analytics_sitemaps, analytics_topics, analytics_tracked_prompts, gsc_connections, gsc_properties, gsc_query_rows, gsc_sync_runs
@@ -176,10 +177,13 @@ def analytics_citations_endpoint(workspace_id):
     with engine.connect() as conn:
         rollup = citation_domain_rollup(workspace_id, conn)
         gaps = competitor_citation_gaps(workspace_id, conn)
+        citations = citation_listing(workspace_id, conn)
 
     return jsonify({
         'total_citations': rollup['total_citations'],
         'domains': rollup['domains'],
         # The actionable half: domains citing a rival that have never cited you.
         'competitor_gaps': gaps,
+        # Per-URL grain: the Citations & Sources page's main table/drawer.
+        'citations': citations,
     })

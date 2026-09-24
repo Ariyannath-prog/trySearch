@@ -18,7 +18,7 @@ from app.models import extractions, analytics_answer_sources, analytics_content_
 from app.rollup import SCHEDULED_RUN_TYPE, latest_metrics, latest_metrics_all_engines
 from app.stats import describe_delta, metric, score_envelope
 from app.tenancy import workspace_for_member
-from app.utils import row_to_dict
+from app.utils import row_to_dict, to_iso
 
 
 def analytics_report(workspace_id, user_id):
@@ -474,3 +474,85 @@ def competitor_citation_gaps(workspace_id, conn=None, limit=25):
         if own_conn:
             conn.close()
     return rows
+
+
+def citation_listing(workspace_id, conn=None):
+    """Every cited URL for a workspace, one row per URL.
+
+    citation_domain_rollup() answers "which domains" at the domain grain; this
+    answers "which URLs, cited by what, when" - the grain the Citations page's
+    per-citation table and evidence drawer need. One flat SELECT (no N+1),
+    grouped by URL in Python, the same shape topic_breakdown() already uses for
+    its own per-topic grouping. No run_type filter: citations are evidence of
+    what a scan actually returned, not the gated Visibility Score, so an
+    on-demand "Run scan" click is included here exactly like
+    citation_domain_rollup() and the existing /citations endpoint already do.
+    """
+    query = (
+        select(
+            analytics_answer_sources.c.answer_id,
+            analytics_answer_sources.c.rank,
+            analytics_answer_sources.c.source_kind,
+            analytics_answer_sources.c.url,
+            analytics_answer_sources.c.domain,
+            analytics_answer_sources.c.category,
+            analytics_provider_answers.c.prompt_id,
+            analytics_provider_answers.c.provider,
+            analytics_provider_answers.c.created_at,
+            func.coalesce(analytics_provider_answers.c.prompt_text,
+                          analytics_tracked_prompts.c.prompt).label('prompt'),
+        )
+        .select_from(analytics_answer_sources)
+        .join(analytics_provider_answers,
+              analytics_provider_answers.c.id == analytics_answer_sources.c.answer_id)
+        .join(analytics_prompt_scan_runs,
+              analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+        .outerjoin(analytics_tracked_prompts,
+                   analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+        .where(analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+    )
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        rows = conn.execute(query).mappings().all()
+    finally:
+        if own_conn:
+            conn.close()
+
+    by_url = {}
+    for row in rows:
+        entry = by_url.setdefault(row['url'], {
+            'url': row['url'], 'domain': row['domain'], 'category': row['category'],
+            'source_kinds': set(), 'engines': set(), 'prompts': {},
+            'first_seen': row['created_at'], 'last_seen': row['created_at'],
+            'occurrences': [],
+        })
+        entry['source_kinds'].add(row['source_kind'])
+        entry['engines'].add(row['provider'])
+        if row['prompt']:
+            entry['prompts'][row['prompt']] = True
+        if row['created_at'] < entry['first_seen']:
+            entry['first_seen'] = row['created_at']
+        if row['created_at'] > entry['last_seen']:
+            entry['last_seen'] = row['created_at']
+        entry['occurrences'].append({
+            'answer_id': row['answer_id'], 'prompt_id': row['prompt_id'],
+            'prompt': row['prompt'], 'engine': row['provider'],
+            'rank': row['rank'], 'created_at': to_iso(row['created_at']),
+        })
+
+    listing = []
+    for entry in by_url.values():
+        entry['citation_count'] = len(entry['occurrences'])
+        entry['source_kinds'] = sorted(entry['source_kinds'])
+        entry['engines'] = sorted(entry['engines'])
+        entry['prompts'] = sorted(entry['prompts'].keys())
+        entry['occurrences'].sort(key=lambda o: o['created_at'], reverse=True)
+        entry['bucket'] = (
+            entry['category'] if entry['category'] in ('own', 'competitor') else 'third_party'
+        )
+        entry['first_seen'] = to_iso(entry['first_seen'])
+        entry['last_seen'] = to_iso(entry['last_seen'])
+        listing.append(entry)
+    listing.sort(key=lambda entry: entry['citation_count'], reverse=True)
+    return listing
