@@ -14,8 +14,9 @@ from app.crawler.fetch import normalise_site_host
 from app.db import engine
 from app.extraction.mentions import domain_matches, project_brand_aliases, text_mentions_alias
 from app.jobs import latest_site_audit
+from app.llm import open_model_settings
 from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, competitors, mentions as mentions_table, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts, engines
-from app.rollup import SCHEDULED_RUN_TYPE, latest_metrics, latest_metrics_all_engines, score_from_counts
+from app.rollup import SCHEDULED_RUN_TYPE, latest_metrics, latest_metrics_all_engines, score_from_counts, sentiment_index_from_labels
 from app.stats import MIN_ANSWERS_FOR_SCORE, describe_delta, metric, score_envelope
 from app.tenancy import workspace_for_member
 from app.utils import row_to_dict, to_iso
@@ -907,3 +908,118 @@ def mention_listing(workspace_id, conn=None, limit=500):
         )
         listing.append(item)
     return listing
+
+
+def sentiment_intelligence(workspace_id, conn=None, limit=500):
+    """Brand sentiment for a workspace - scoped to scheduled runs and
+    brand-mentioned answers only, the same cohort app.sentiment's classifier
+    draws from and metrics_daily.sentiment_index is computed over, so the
+    overview, by-topic and by-engine numbers can never disagree with each
+    other about which answers count.
+
+    Brand-only, by design (see app/sentiment.py's own docstring): the
+    mentions table has no sentiment column, so a specific competitor's
+    sentiment is not representable without a schema change this pass
+    deliberately does not make.
+    """
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        rows = conn.execute(
+            select(
+                analytics_provider_answers.c.id,
+                analytics_provider_answers.c.provider,
+                analytics_provider_answers.c.created_at,
+                func.coalesce(analytics_provider_answers.c.prompt_text,
+                              analytics_tracked_prompts.c.prompt).label('prompt'),
+                func.coalesce(analytics_provider_answers.c.topic_name,
+                              analytics_topics.c.name).label('topic_name'),
+                extractions.c.sentiment,
+                extractions.c.sentiment_conf,
+            )
+            .select_from(analytics_provider_answers)
+            .join(analytics_prompt_scan_runs,
+                  analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+            .join(extractions,
+                  (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+            .outerjoin(analytics_tracked_prompts,
+                       analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+            .outerjoin(analytics_topics,
+                       analytics_tracked_prompts.c.topic_id == analytics_topics.c.id)
+            .where(
+                (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+                & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+                & (extractions.c.brand_mentioned.is_(True))
+            )
+            .order_by(desc(analytics_provider_answers.c.created_at))
+            .limit(limit)
+        ).mappings().all()
+
+        engine_names = dict(conn.execute(select(engines.c.id, engines.c.display_name)).all())
+    finally:
+        if own_conn:
+            conn.close()
+
+    labels = [row['sentiment'] for row in rows]
+    distribution = {'positive': 0, 'neutral': 0, 'negative': 0}
+    for label in labels:
+        if label in distribution:
+            distribution[label] += 1
+    classified_count = sum(distribution.values())
+
+    by_topic = {}
+    for row in rows:
+        key = row['topic_name'] or 'Untagged'
+        bucket = by_topic.setdefault(key, {'mentioned': 0, 'labels': []})
+        bucket['mentioned'] += 1
+        bucket['labels'].append(row['sentiment'])
+    topic_breakdown_rows = [
+        {
+            'topic': name, 'mentioned': bucket['mentioned'],
+            'classified': sum(1 for label in bucket['labels'] if label in distribution),
+            'sentiment_index': sentiment_index_from_labels(bucket['labels']),
+        }
+        for name, bucket in sorted(by_topic.items())
+    ]
+
+    # By engine: the most recent metrics_daily row per engine - already
+    # computed by the rollup, not re-derived here.
+    latest_by_engine = {}
+    for row in latest_metrics_all_engines(workspace_id):
+        if row['engine_id'] is None:
+            continue
+        existing = latest_by_engine.get(row['engine_id'])
+        if existing is None or row['date'] > existing['date']:
+            latest_by_engine[row['engine_id']] = row
+    engine_breakdown = [
+        {
+            'engine_id': engine_id, 'engine': engine_names.get(engine_id, 'Unknown'),
+            'sentiment_index': row['sentiment_index'], 'answer_count': row['answer_count'],
+            'date': row['date'].isoformat() if row['date'] else None,
+        }
+        for engine_id, row in sorted(latest_by_engine.items(), key=lambda kv: engine_names.get(kv[0], ''))
+    ]
+
+    # Trend: the blended metrics_daily row per day, chronological.
+    trend = [
+        {'date': row['date'].isoformat(), 'sentiment_index': row['sentiment_index']}
+        for row in reversed(latest_metrics(workspace_id, engine_id=None))
+    ]
+
+    evidence = [
+        {
+            'id': row['id'], 'provider': row['provider'], 'prompt': row['prompt'],
+            'topic_name': row['topic_name'], 'sentiment': row['sentiment'],
+            'sentiment_conf': row['sentiment_conf'], 'created_at': to_iso(row['created_at']),
+        }
+        for row in rows
+    ]
+
+    return {
+        'configured': open_model_settings()['configured'],
+        'mentioned_count': len(rows), 'classified_count': classified_count,
+        'overall_sentiment_index': sentiment_index_from_labels(labels),
+        'distribution': distribution,
+        'topics': topic_breakdown_rows, 'engines': engine_breakdown,
+        'trend': trend, 'evidence': evidence,
+    }

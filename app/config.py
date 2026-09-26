@@ -49,3 +49,7 @@ RAG_CHUNK_OVERLAP_WORDS = _bounded_int('RAG_CHUNK_OVERLAP_WORDS', 30, 0, RAG_CHU
 RAG_MAX_CHUNKS_PER_PAGE = _bounded_int('RAG_MAX_CHUNKS_PER_PAGE', 40, 1, 100)
 RAG_DEFAULT_TOP_K = _bounded_int('RAG_DEFAULT_TOP_K', 6, 1, 12)
 RAG_MAX_CONTEXT_CHARS = _bounded_int('RAG_MAX_CONTEXT_CHARS', 16_000, 4_000, 40_000)
+# Answers classified per sentiment_classification job run. A backlog larger than
+# this is picked up over subsequent runs - classification only ever targets
+# answers still missing a sentiment, so this is safely resumable.
+SENTIMENT_BATCH_SIZE = _bounded_int('SENTIMENT_BATCH_SIZE', 50, 1, 200)

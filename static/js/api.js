@@ -108,5 +108,9 @@
         { method: 'POST', body: JSON.stringify(data || {}) });
     },
     getMentions: function (id) { return apiCall('/api/analytics/projects/' + id + '/mentions'); },
+    getSentiment: function (id) { return apiCall('/api/analytics/projects/' + id + '/sentiment'); },
+    startSentimentClassification: function (id) {
+      return apiCall('/api/analytics/projects/' + id + '/sentiment/classify', { method: 'POST', body: '{}' });
+    },
   };
 })();

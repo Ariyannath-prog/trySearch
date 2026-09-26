@@ -50,6 +50,7 @@ def create_app():
     from app.routes.pages import pages_bp
     from app.routes.prompts import prompts_bp
     from app.routes.reports import reports_bp
+    from app.routes.sentiment import sentiment_bp
 
     for blueprint in (
         auth_bp,
@@ -64,6 +65,7 @@ def create_app():
         pages_bp,
         prompts_bp,
         reports_bp,
+        sentiment_bp,
     ):
         app.register_blueprint(blueprint)
 

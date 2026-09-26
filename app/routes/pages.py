@@ -140,6 +140,12 @@ def mentions_page():
         return redirect('/login')
     return send_from_directory(BASE_DIR, 'mentions.html')
 
+@pages_bp.route('/sentiment')
+def sentiment_page():
+    if not session.get('user_id'):
+        return redirect('/login')
+    return send_from_directory(BASE_DIR, 'sentiment.html')
+
 @pages_bp.route('/content-studio')
 def content_studio_page():
     if not session.get('user_id'):

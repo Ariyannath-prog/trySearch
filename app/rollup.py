@@ -61,10 +61,16 @@ def visibility_score(mention_rate, position_score, citation_rate):
 
 
 def score_from_counts(*, total_answers, mentioned, reciprocal_rank_sum, cited,
-                      brand_mentions=None, competitor_mentions=None):
+                      brand_mentions=None, competitor_mentions=None,
+                      sentiment_index=None):
     """Turn raw counts into the PRD §13 metrics. No rounding happens here.
 
     reciprocal_rank_sum is the sum of 1/rank over *mentioned* answers only.
+    sentiment_index is computed by the caller (sentiment_index_from_counts()
+    below) rather than here, because it is not a ratio of total_answers the
+    way mention/citation rate are - its denominator is answers actually
+    classified, which can be fewer than total_answers whenever
+    classification hasn't caught up yet.
     """
     if not total_answers:
         # Empty denominator is NULL, never 0, everywhere - including the blend.
@@ -92,9 +98,22 @@ def score_from_counts(*, total_answers, mentioned, reciprocal_rank_sum, cited,
         'citation_rate': citation_rate,
         'visibility_score': visibility_score(mention_rate, position_score, citation_rate),
         'sov': sov,
-        # Sentiment is deliberately outside VS in v1 (PRD §13) and not yet extracted.
-        'sentiment_index': None,
+        # Sentiment is deliberately outside VS in v1 (PRD §13) - a companion
+        # index, not a weighted-in factor.
+        'sentiment_index': sentiment_index,
     }
+
+
+SENTIMENT_LABEL_SCORE = {'positive': 100.0, 'neutral': 50.0, 'negative': 0.0}
+
+
+def sentiment_index_from_labels(labels):
+    """Average of positive=100/neutral=50/negative=0 over *classified*
+    answers only. An unclassified answer (label is None/unrecognised) is
+    excluded from the denominator, never coerced to neutral - that would be
+    inventing a measurement for something that was never measured."""
+    scores = [SENTIMENT_LABEL_SCORE[label] for label in labels if label in SENTIMENT_LABEL_SCORE]
+    return (sum(scores) / len(scores)) if scores else None
 
 
 def blend(per_engine):
@@ -151,6 +170,7 @@ def collect_counts(workspace_id, day, conn):
             extractions.c.brand_mentioned,
             extractions.c.brand_rank,
             extractions.c.brand_cited,
+            extractions.c.sentiment,
         )
         .select_from(analytics_provider_answers)
         .join(analytics_prompt_scan_runs,
@@ -170,6 +190,7 @@ def collect_counts(workspace_id, day, conn):
     for row in rows:
         bucket = by_provider.setdefault(row['provider'], {
             'total_answers': 0, 'mentioned': 0, 'reciprocal_rank_sum': 0.0, 'cited': 0,
+            'sentiment_labels': [],
         })
         bucket['total_answers'] += 1
         if row['brand_mentioned']:
@@ -178,6 +199,7 @@ def collect_counts(workspace_id, day, conn):
                 bucket['reciprocal_rank_sum'] += 1.0 / row['brand_rank']
         if row['brand_cited']:
             bucket['cited'] += 1
+        bucket['sentiment_labels'].append(row['sentiment'])
     return by_provider
 
 
@@ -213,7 +235,9 @@ def rollup_workspace_day(workspace_id, day=None):
 
         per_engine = []
         for provider, counts in sorted(by_provider.items()):
-            metrics = score_from_counts(**counts)
+            sentiment_labels = counts.pop('sentiment_labels', [])
+            metrics = score_from_counts(
+                **counts, sentiment_index=sentiment_index_from_labels(sentiment_labels))
             per_engine.append(metrics)
             resolved = engine_id_for_provider(provider, conn)
             if resolved is not None:
