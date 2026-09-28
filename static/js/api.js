@@ -113,5 +113,19 @@
     startSentimentClassification: function (id) {
       return apiCall('/api/analytics/projects/' + id + '/sentiment/classify', { method: 'POST', body: '{}' });
     },
+    listContentDocuments: function () { return apiCall('/api/content-studio/documents'); },
+    createContentDocument: function (data) {
+      return apiCall('/api/content-studio/documents', { method: 'POST', body: JSON.stringify(data) });
+    },
+    getContentDocument: function (id) { return apiCall('/api/content-studio/documents/' + id); },
+    updateContentDocument: function (id, data) {
+      return apiCall('/api/content-studio/documents/' + id, { method: 'PATCH', body: JSON.stringify(data) });
+    },
+    deleteContentDocument: function (id) {
+      return apiCall('/api/content-studio/documents/' + id, { method: 'DELETE' });
+    },
+    generateContentDocument: function (id) {
+      return apiCall('/api/content-studio/documents/' + id + '/generate', { method: 'POST', body: '{}' });
+    },
   };
 })();
