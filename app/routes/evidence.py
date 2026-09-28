@@ -24,6 +24,7 @@ from sqlalchemy import (
 import json
 
 from app.db import engine
+from app.analytics_filters import FilterError, available_regions, parse_filters
 from app.costs import ceiling_status, refusal_payload
 from app.jobs import create_analytics_job
 from app.metrics import latest_prompt_evidence, mention_listing, recommendation_intelligence, scan_history
@@ -117,8 +118,20 @@ def analytics_scan_history_endpoint(workspace_id):
     access, error = require_workspace(workspace_id)
     if error:
         return error
-    return jsonify({'project': row_to_dict(access.workspace),
-                    'scans': scan_history(workspace_id)})
+    try:
+        filters = parse_filters(request.args)
+    except FilterError as error:
+        return jsonify({'error': str(error)}), 400
+    with engine.connect() as conn:
+        available_engines = [dict(row) for row, _adapter in enabled_engines(conn, workspace_id=workspace_id)]
+    return jsonify({
+        'project': row_to_dict(access.workspace),
+        'scans': scan_history(workspace_id, filters=filters),
+        'available_filters': {
+            'regions': available_regions(workspace_id),
+            'engines': [{'id': e['id'], 'key': e['key'], 'display_name': e['display_name']} for e in available_engines],
+        },
+    })
 
 @evidence_bp.route('/api/analytics/projects/<int:workspace_id>/evidence/<int:answer_id>', methods=['GET'])
 def analytics_evidence_detail_endpoint(workspace_id, answer_id):

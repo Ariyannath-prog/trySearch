@@ -44,6 +44,7 @@
   var VIEWS_HTML =
     '<div id="list-view">' +
     '  <div class="phead"><div><h1>Scan History</h1><p>Every prompt scan run for <span id="project-name"></span>.</p></div></div>' +
+    '  <div class="panel"><div class="pb" id="filter-bar"></div></div>' +
     '  <div class="panel">' +
     '    <div class="pb">' +
     '      <div class="cols" style="grid-template-columns:1fr auto;align-items:center;margin-bottom:10px">' +
@@ -107,12 +108,22 @@
   }
 
   function loadList() {
-    return TS.api.getScanHistory(state.workspaceId).then(function (res) {
+    var queryString = TS.filters.toQueryString(TS.filters.getState());
+    return TS.api.getScanHistory(state.workspaceId, queryString).then(function (res) {
       if (!res.ok) return;
       state.project = res.body.project;
       state.scans = res.body.scans || [];
       text($('#project-name'), state.project ? (state.project.brand_name || state.project.domain) : '');
+      renderFilterBar(res.body.available_filters || { regions: [], engines: [] });
       renderList();
+    });
+  }
+
+  function renderFilterBar(availableFilters) {
+    TS.filters.render($('#filter-bar'), {
+      regions: availableFilters.regions || [],
+      engines: availableFilters.engines || [],
+      onApply: function () { loadList(); },
     });
   }
 

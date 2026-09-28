@@ -20,8 +20,10 @@ from sqlalchemy import insert  # noqa: E402
 from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app import metrics  # noqa: E402
+from app.analytics_filters import parse_filters  # noqa: E402
 from app.db import engine  # noqa: E402
-from app.models import analytics_prompt_scan_runs, users  # noqa: E402
+from app.models import analytics_prompt_scan_runs, engines as engines_table, users  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 PASSWORD = 'scan-history-password-123'
 
@@ -149,6 +151,95 @@ class ScansPageTests(unittest.TestCase):
             response = client.get('/scans')
             self.assertEqual(response.status_code, 200)
             self.assertIn('text/html', response.content_type)
+
+
+class ScanHistoryFilteringTests(unittest.TestCase):
+    """scan_history()'s optional `filters` argument - the pilot retrofit of
+    Milestone B's shared date-range/region/engine filter system."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.workspace_id = create_workspace(user_id=98850, domain='scanfilter.example',
+                                            brand_name='ScanFilter')
+        cls.jan = datetime(2026, 1, 15, 9, 0, 0)
+        cls.feb = datetime(2026, 2, 15, 9, 0, 0)
+        with engine.begin() as conn:
+            cls.jan_us_perplexity = seed_scan_run(
+                conn, workspace_id=cls.workspace_id, when=cls.jan, provider='Perplexity')
+            cls.feb_gb_openai = seed_scan_run(
+                conn, workspace_id=cls.workspace_id, when=cls.feb, provider='OpenAI')
+            conn.execute(analytics_prompt_scan_runs.update().where(
+                analytics_prompt_scan_runs.c.id == cls.feb_gb_openai
+            ).values(region='GB'))
+            cls.perplexity_id = conn.execute(select(engines_table.c.id).where(
+                engines_table.c.key == 'perplexity')).scalar_one()
+            # The test database only ever seeds 'perplexity' (conftest.py's
+            # _seed_engines() mirrors just the one migrated row); every other
+            # engine only exists in production via later one-off inserts, so
+            # a second engine needed for a filter test has to insert its own.
+            cls.openai_id = conn.execute(select(engines_table.c.id).where(
+                engines_table.c.key == 'openai')).scalar_one_or_none()
+            if cls.openai_id is None:
+                cls.openai_id = conn.execute(insert(engines_table).values(
+                    key='openai', display_name='OpenAI', source_type='api',
+                    adapter_version='test', enabled=True,
+                )).inserted_primary_key[0]
+
+    def test_unfiltered_returns_both(self):
+        scans = metrics.scan_history(self.workspace_id)
+        self.assertEqual({s['id'] for s in scans}, {self.jan_us_perplexity, self.feb_gb_openai})
+
+    def test_date_range_narrows_to_the_matching_run(self):
+        filters = parse_filters({'start_date': '2026-02-01', 'end_date': '2026-02-28'})
+        scans = metrics.scan_history(self.workspace_id, filters=filters)
+        self.assertEqual([s['id'] for s in scans], [self.feb_gb_openai])
+
+    def test_region_filter_narrows_to_the_matching_run(self):
+        filters = parse_filters({'region': 'GB'})
+        scans = metrics.scan_history(self.workspace_id, filters=filters)
+        self.assertEqual([s['id'] for s in scans], [self.feb_gb_openai])
+
+    def test_engine_ids_filter_resolves_to_provider_and_narrows(self):
+        filters = parse_filters({'engine_ids': str(self.openai_id)})
+        scans = metrics.scan_history(self.workspace_id, filters=filters)
+        self.assertEqual([s['id'] for s in scans], [self.feb_gb_openai])
+
+    def test_combined_filters_can_exclude_everything(self):
+        filters = parse_filters({'region': 'GB', 'engine_ids': str(self.perplexity_id)})
+        scans = metrics.scan_history(self.workspace_id, filters=filters)
+        self.assertEqual(scans, [])
+
+
+class ScanHistoryRouteFilteringTests(unittest.TestCase):
+
+    def login(self, client, username):
+        response = client.post('/api/login', json={'username': username, 'password': PASSWORD})
+        self.assertEqual(response.status_code, 200, f'login failed for {username}')
+
+    def test_route_applies_range_and_returns_available_filters(self):
+        user_id = make_user('scans_filter_route_user')
+        workspace_id = create_workspace(user_id=user_id, domain='scansfilterroute.example',
+                                        brand_name='ScansFilterRoute')
+        with engine.begin() as conn:
+            seed_scan_run(conn, workspace_id=workspace_id, when=datetime(2020, 1, 1))
+            seed_scan_run(conn, workspace_id=workspace_id, when=datetime.utcnow())
+        with server_pg.app.test_client() as client:
+            self.login(client, 'scans_filter_route_user')
+            response = client.get(f'/api/analytics/projects/{workspace_id}/scans?range=7d')
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertEqual(len(body['scans']), 1)  # the 2020 run is excluded
+        self.assertIn('regions', body['available_filters'])
+        self.assertIn('engines', body['available_filters'])
+
+    def test_malformed_filter_is_a_400_not_a_500(self):
+        user_id = make_user('scans_filter_400_user')
+        workspace_id = create_workspace(user_id=user_id, domain='scansfilter400.example',
+                                        brand_name='ScansFilter400')
+        with server_pg.app.test_client() as client:
+            self.login(client, 'scans_filter_400_user')
+            response = client.get(f'/api/analytics/projects/{workspace_id}/scans?range=bogus')
+        self.assertEqual(response.status_code, 400)
 
 
 if __name__ == '__main__':

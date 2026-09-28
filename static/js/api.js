@@ -34,7 +34,9 @@
       if (runId) url += '?run_id=' + encodeURIComponent(runId);
       return apiCall(url);
     },
-    getScanHistory: function (id) { return apiCall('/api/analytics/projects/' + id + '/scans'); },
+    getScanHistory: function (id, queryString) {
+      return apiCall('/api/analytics/projects/' + id + '/scans' + (queryString || ''));
+    },
     getEvidenceAnswer: function (id, answerId) {
       return apiCall('/api/analytics/projects/' + id + '/evidence/' + answerId);
     },

@@ -1123,18 +1123,32 @@ def recommendation_intelligence(workspace_id, conn=None):
     return recommendations
 
 
-def scan_history(workspace_id, limit=200):
+def scan_history(workspace_id, limit=200, *, filters=None, conn=None):
     """Every prompt-scan run for a workspace, newest first - plain columns
     already stored on analytics_prompt_scan_runs, no aggregation. This is
     the list latest_prompt_evidence(workspace_id, run_id) drills into for
-    one specific run's full evidence (unchanged, reused as-is)."""
-    with engine.connect() as conn:
+    one specific run's full evidence (unchanged, reused as-is).
+
+    `filters` is a parsed dict from app.analytics_filters.parse_filters()
+    (date range / region / engine_ids) - optional, so every existing caller
+    that doesn't pass one keeps working unfiltered exactly as before.
+    """
+    from app.analytics_filters import engine_providers_for_ids, scan_run_filter_clause
+
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        providers = engine_providers_for_ids((filters or {}).get('engine_ids'), conn)
+        clause = scan_run_filter_clause(filters or {}, providers=providers)
         rows = [row_to_dict(row) for row in conn.execute(
             select(analytics_prompt_scan_runs)
-            .where(analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+            .where((analytics_prompt_scan_runs.c.workspace_id == workspace_id) & clause)
             .order_by(desc(analytics_prompt_scan_runs.c.created_at))
             .limit(limit)
         ).mappings().all()]
+    finally:
+        if own_conn:
+            conn.close()
     for row in rows:
         try:
             row['competitor_snapshot'] = json.loads(row.get('competitor_snapshot') or '[]')
