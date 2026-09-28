@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 import hashlib
 import json
+import re
 
 from app.crawler.fetch import normalise_site_host
 from app.db import engine
@@ -1023,3 +1024,100 @@ def sentiment_intelligence(workspace_id, conn=None, limit=500):
         'topics': topic_breakdown_rows, 'engines': engine_breakdown,
         'trend': trend, 'evidence': evidence,
     }
+
+
+_FINDING_PRIORITY = {'critical': 'high', 'high': 'high', 'medium': 'medium', 'low': 'low'}
+
+
+def recommendation_intelligence(workspace_id, conn=None):
+    """Merge the two things in this backend that actually generate a
+    title/rationale/priority recommendation - nothing else does, and this
+    function invents no third source:
+
+    - analytics_content_opportunities: rule-based or open-model-summarized
+      opportunities already written at the end of every prompt scan
+      (app/scanning.py), never re-derived here.
+    - analytics_audit_findings, via the existing latest_site_audit() (no new
+      query): every finding already carries its own `recommendation` text.
+
+    Neither table has a status/done column, so every item here is read-only
+    evidence, not a workflow state.
+    """
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        opportunity_rows = [row_to_dict(row) for row in conn.execute(
+            select(analytics_content_opportunities)
+            .where(analytics_content_opportunities.c.workspace_id == workspace_id)
+            .order_by(analytics_content_opportunities.c.priority, desc(analytics_content_opportunities.c.created_at))
+        ).mappings().all()]
+
+        answer_ids = set()
+        for row in opportunity_rows:
+            answer_ids.update(int(match.split(':')[1]) for match in
+                              re.findall(r'answer:\d+', row['evidence_refs'] or ''))
+        answer_context = {}
+        if answer_ids:
+            for row in conn.execute(
+                select(
+                    analytics_provider_answers.c.id, analytics_provider_answers.c.provider,
+                    analytics_provider_answers.c.created_at,
+                    func.coalesce(analytics_provider_answers.c.prompt_text,
+                                  analytics_tracked_prompts.c.prompt).label('prompt'),
+                    func.coalesce(analytics_provider_answers.c.topic_name,
+                                  analytics_topics.c.name).label('topic_name'),
+                )
+                .select_from(analytics_provider_answers)
+                .outerjoin(analytics_tracked_prompts,
+                           analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+                .outerjoin(analytics_topics,
+                           analytics_tracked_prompts.c.topic_id == analytics_topics.c.id)
+                .where(analytics_provider_answers.c.id.in_(answer_ids))
+            ).mappings():
+                answer_context[row['id']] = dict(row)
+    finally:
+        if own_conn:
+            conn.close()
+
+    recommendations = []
+    for row in opportunity_rows:
+        answer_refs = [int(match.split(':')[1]) for match in
+                       re.findall(r'answer:\d+', row['evidence_refs'] or '')]
+        evidence = [
+            {
+                'answer_id': answer_id, 'prompt': ctx.get('prompt'), 'topic_name': ctx.get('topic_name'),
+                'provider': ctx.get('provider'), 'created_at': to_iso(ctx.get('created_at')),
+            }
+            for answer_id in answer_refs
+            for ctx in [answer_context.get(answer_id)] if ctx
+        ]
+        recommendations.append({
+            'id': f"opportunity:{row['id']}", 'kind': 'content_opportunity',
+            'title': row['title'], 'rationale': row['rationale'], 'priority': row['priority'],
+            'area': 'AI Visibility', 'source': row['source'], 'created_at': to_iso(row['created_at']),
+            'evidence': evidence, 'link': '/mentions',
+        })
+
+    audit = latest_site_audit(workspace_id)
+    if audit:
+        pages_by_id = {page['id']: page for page in audit['pages']}
+        for finding in audit['findings']:
+            page = pages_by_id.get(finding['page_id'])
+            recommendations.append({
+                'id': f"finding:{finding['id']}", 'kind': 'site_finding',
+                'title': finding['code'].replace('_', ' ').capitalize(),
+                'rationale': finding['recommendation'], 'priority': _FINDING_PRIORITY.get(finding['severity'], 'medium'),
+                'area': finding['area'], 'source': 'Site audit',
+                'created_at': to_iso(audit['run'].get('completed_at') or audit['run'].get('created_at')),
+                'evidence': [{'evidence_text': finding['evidence'],
+                             'url': page['final_url'] or page['url'] if page else None}],
+                'link': '/site-audit',
+            })
+
+    # Newest first within a priority tier, then high priority ahead of low -
+    # two stable passes rather than one composite key, since "newest" needs
+    # descending order and "priority" needs ascending in the same sort.
+    priority_rank = {'high': 0, 'medium': 1, 'low': 2}
+    recommendations.sort(key=lambda item: item['created_at'] or '', reverse=True)
+    recommendations.sort(key=lambda item: priority_rank.get(item['priority'], 1))
+    return recommendations

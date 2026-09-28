@@ -109,6 +109,7 @@
     },
     getMentions: function (id) { return apiCall('/api/analytics/projects/' + id + '/mentions'); },
     getSentiment: function (id) { return apiCall('/api/analytics/projects/' + id + '/sentiment'); },
+    getRecommendations: function (id) { return apiCall('/api/analytics/projects/' + id + '/recommendations'); },
     startSentimentClassification: function (id) {
       return apiCall('/api/analytics/projects/' + id + '/sentiment/classify', { method: 'POST', body: '{}' });
     },

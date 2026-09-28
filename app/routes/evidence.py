@@ -26,7 +26,7 @@ import json
 from app.db import engine
 from app.costs import ceiling_status, refusal_payload
 from app.jobs import create_analytics_job
-from app.metrics import latest_prompt_evidence, mention_listing
+from app.metrics import latest_prompt_evidence, mention_listing, recommendation_intelligence
 from app.models import analytics_answer_sources, analytics_audit_jobs, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts
 from app.scanning import enabled_engines
 from app.tenancy import require_workspace
@@ -103,6 +103,14 @@ def analytics_mentions_endpoint(workspace_id):
         return error
     return jsonify({'project': row_to_dict(access.workspace),
                     'mentions': mention_listing(workspace_id)})
+
+@evidence_bp.route('/api/analytics/projects/<int:workspace_id>/recommendations', methods=['GET'])
+def analytics_recommendations_endpoint(workspace_id):
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    return jsonify({'project': row_to_dict(access.workspace),
+                    'recommendations': recommendation_intelligence(workspace_id)})
 
 @evidence_bp.route('/api/analytics/projects/<int:workspace_id>/evidence/<int:answer_id>', methods=['GET'])
 def analytics_evidence_detail_endpoint(workspace_id, answer_id):
