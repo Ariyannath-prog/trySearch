@@ -203,6 +203,66 @@ def collect_counts(workspace_id, day, conn):
     return by_provider
 
 
+def collect_counts_range(workspace_id, *, start_date=None, end_date=None,
+                         region=None, providers=None, conn):
+    """collect_counts(), generalized from one day to a date range with an
+    optional region filter - for the global analytics filter system's
+    region case only. metrics_daily has no region column (collect_counts()
+    itself never grouped by region), so a region-filtered read cannot come
+    from the stored rollup and has to be computed live from the same
+    evidence collect_counts() already reads, with the identical join shape.
+    Grouped by (date, provider) so the caller can run score_from_counts()/
+    blend() - both unmodified - per day exactly as rollup_workspace_day()
+    does, just without persisting the result to metrics_daily.
+    """
+    conditions = (
+        (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+        & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+    )
+    if start_date:
+        conditions = conditions & (func.date(analytics_prompt_scan_runs.c.created_at) >= start_date)
+    if end_date:
+        conditions = conditions & (func.date(analytics_prompt_scan_runs.c.created_at) <= end_date)
+    if region:
+        conditions = conditions & (analytics_prompt_scan_runs.c.region == region)
+    if providers:
+        conditions = conditions & (analytics_prompt_scan_runs.c.provider.in_(providers))
+
+    rows = conn.execute(
+        select(
+            func.date(analytics_prompt_scan_runs.c.created_at).label('day'),
+            analytics_provider_answers.c.provider,
+            extractions.c.brand_mentioned,
+            extractions.c.brand_rank,
+            extractions.c.brand_cited,
+            extractions.c.sentiment,
+        )
+        .select_from(analytics_provider_answers)
+        .join(analytics_prompt_scan_runs,
+              analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+        .join(extractions,
+              (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+        .where(conditions)
+    ).mappings().all()
+
+    by_day_provider = {}
+    for row in rows:
+        key = (row['day'], row['provider'])
+        bucket = by_day_provider.setdefault(key, {
+            'total_answers': 0, 'mentioned': 0, 'reciprocal_rank_sum': 0.0, 'cited': 0,
+            'sentiment_labels': [],
+        })
+        bucket['total_answers'] += 1
+        if row['brand_mentioned']:
+            bucket['mentioned'] += 1
+            if row['brand_rank']:
+                bucket['reciprocal_rank_sum'] += 1.0 / row['brand_rank']
+        if row['brand_cited']:
+            bucket['cited'] += 1
+        bucket['sentiment_labels'].append(row['sentiment'])
+    return by_day_provider
+
+
 def upsert_row(workspace_id, day, engine_id, values, conn):
     """Write one metrics_daily row. Idempotent - recompute overwrites, never adds."""
     now = datetime.utcnow()
@@ -249,28 +309,43 @@ def rollup_workspace_day(workspace_id, day=None):
         return blended
 
 
-def latest_metrics(workspace_id, *, engine_id=None, limit=90):
-    """Read path for dashboards. Reads metrics_daily and nothing else."""
+def latest_metrics(workspace_id, *, engine_id=None, limit=90, start_date=None, end_date=None):
+    """Read path for dashboards. Reads metrics_daily and nothing else.
+
+    start_date/end_date are an additional, purely additive date filter (the
+    global analytics filter system) - omitted, behavior is identical to
+    before it existed.
+    """
     with engine.connect() as conn:
+        conditions = (
+            (metrics_daily.c.workspace_id == workspace_id)
+            & (metrics_daily.c.engine_id.is_(None) if engine_id is None
+               else metrics_daily.c.engine_id == engine_id)
+        )
+        if start_date:
+            conditions = conditions & (metrics_daily.c.date >= start_date)
+        if end_date:
+            conditions = conditions & (metrics_daily.c.date <= end_date)
         rows = conn.execute(
             select(metrics_daily)
-            .where(
-                (metrics_daily.c.workspace_id == workspace_id)
-                & (metrics_daily.c.engine_id.is_(None) if engine_id is None
-                   else metrics_daily.c.engine_id == engine_id)
-            )
+            .where(conditions)
             .order_by(metrics_daily.c.date.desc())
             .limit(limit)
         ).mappings().all()
     return [dict(row) for row in rows]
 
 
-def latest_metrics_all_engines(workspace_id, *, limit=90):
+def latest_metrics_all_engines(workspace_id, *, limit=90, start_date=None, end_date=None):
     """Every metrics_daily row for the workspace, blended and per-engine."""
     with engine.connect() as conn:
+        conditions = (metrics_daily.c.workspace_id == workspace_id)
+        if start_date:
+            conditions = conditions & (metrics_daily.c.date >= start_date)
+        if end_date:
+            conditions = conditions & (metrics_daily.c.date <= end_date)
         rows = conn.execute(
             select(metrics_daily)
-            .where(metrics_daily.c.workspace_id == workspace_id)
+            .where(conditions)
             .order_by(metrics_daily.c.date.desc())
             .limit(limit)
         ).mappings().all()

@@ -85,7 +85,11 @@ def analytics_evidence_endpoint(workspace_id):
         run_id = int(request.args['run_id']) if request.args.get('run_id') else None
     except ValueError:
         return jsonify({'error': 'run_id must be an integer.'}), 400
-    evidence = latest_prompt_evidence(workspace_id, run_id)
+    try:
+        filters = parse_filters(request.args)
+    except FilterError as error:
+        return jsonify({'error': str(error)}), 400
+    evidence = latest_prompt_evidence(workspace_id, run_id, filters=filters)
     with engine.connect() as conn:
         active_job = conn.execute(select(analytics_audit_jobs).where(
             (analytics_audit_jobs.c.workspace_id == workspace_id) &

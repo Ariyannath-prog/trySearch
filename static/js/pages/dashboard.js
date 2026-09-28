@@ -1,7 +1,11 @@
-/* Dashboard page controller (/analytics). Restyle of the working Milestone-2
-   logic onto the shared app shell -- the data flow and state handling are
-   unchanged, only the markup/classes are. Requires api.js, shell.js,
-   statTile.js, trendChart.js. */
+/* Dashboard page controller (/analytics). GET .../report now accepts the
+   shared date-range/region/engine filter system (app/analytics_filters.py)
+   and returns already-filtered data - this page never filters client-side,
+   it only renders what the backend already scoped. The filter bar's state
+   is read from GET .../report's own available_filters (regions actually in
+   this workspace's history, engines from the existing registry), same
+   TS.filters component every other retrofitted page uses. Requires api.js,
+   shell.js, statTile.js, trendChart.js, components/filters.js. */
 (function () {
   'use strict';
 
@@ -45,6 +49,8 @@
     '  </div>' +
     '</div>' +
     '<div class="hint" id="scan-status"></div>' +
+    '<div class="panel"><div class="pb" id="filter-bar"></div></div>' +
+    '<p class="hint" id="scan-summary-line" style="margin:0 0 10px"></p>' +
     '<div class="panel" id="quick-add-panel" hidden>' +
     '  <div class="ph"><h4>Add a tracked prompt</h4></div>' +
     '  <div class="pb">' +
@@ -148,13 +154,34 @@
   function loadWorkspace(id) {
     state.activeWorkspaceId = id;
     if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
-    TS.api.getReport(id).then(function (res) {
+    var queryString = TS.filters.toQueryString(TS.filters.getState());
+    TS.api.getReport(id, queryString).then(function (res) {
       if (!res.ok) return;
       state.report = res.body;
       text($('#project-name'), (res.body.project && (res.body.project.brand_name || res.body.project.domain)) || '');
+      renderFilterBar(res.body.available_filters || { regions: [], engines: [] });
       renderDashboard(res.body);
       refreshEvidence(id);
     });
+  }
+
+  function renderFilterBar(availableFilters) {
+    TS.filters.render($('#filter-bar'), {
+      regions: availableFilters.regions || [],
+      engines: availableFilters.engines || [],
+      onApply: function () { loadWorkspace(state.activeWorkspaceId); },
+    });
+  }
+
+  function renderScanSummary(summary) {
+    var el = $('#scan-summary-line');
+    if (!summary || !summary.total) {
+      text(el, 'No scans match the selected filters.');
+      return;
+    }
+    text(el, summary.total + ' scan(s) in range — ' + summary.completed + ' succeeded, ' +
+      summary.partial + ' partial, ' + summary.failed + ' failed — ' +
+      summary.prompts_completed + ' of ' + summary.prompts_total + ' prompts answered.');
   }
 
   function renderDashboard(report) {
@@ -178,6 +205,7 @@
 
     renderStateBanner(v);
     renderEngineTable(report.engines);
+    renderScanSummary(report.scan_summary);
     TS.renderTrendChart($('#trend-container'), report.history);
     renderSiteHealth(report.site_health);
   }
@@ -245,7 +273,8 @@
   }
 
   function refreshEvidence(workspaceId) {
-    TS.api.getEvidence(workspaceId).then(function (res) {
+    var queryString = TS.filters.toQueryString(TS.filters.getState());
+    TS.api.getEvidence(workspaceId, null, queryString).then(function (res) {
       if (!res.ok || state.activeWorkspaceId !== workspaceId) return;
       renderEvidenceTable(res.body.evidence);
       if (res.body.active_job) {

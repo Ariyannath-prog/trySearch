@@ -11,20 +11,70 @@ import hashlib
 import json
 import re
 
+from app.analytics_filters import engine_providers_for_ids
 from app.crawler.fetch import normalise_site_host
 from app.db import engine
 from app.extraction.mentions import domain_matches, project_brand_aliases, text_mentions_alias
 from app.jobs import latest_site_audit
 from app.llm import open_model_settings
 from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, competitors, mentions as mentions_table, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts, engines
-from app.rollup import SCHEDULED_RUN_TYPE, latest_metrics, latest_metrics_all_engines, score_from_counts, sentiment_index_from_labels
+from app.rollup import SCHEDULED_RUN_TYPE, blend, collect_counts_range, latest_metrics, latest_metrics_all_engines, score_from_counts, sentiment_index_from_labels
 from app.stats import MIN_ANSWERS_FOR_SCORE, describe_delta, metric, score_envelope
 from app.tenancy import workspace_for_member
 from app.utils import row_to_dict, to_iso
 
 
-def analytics_report(workspace_id, user_id):
-    """Dashboard payload. Reads metrics_daily and nothing else for its numbers.
+def _score_row(counts, *, date, engine_id=None):
+    """counts (a collect_counts()-shaped dict) -> a metrics_daily-shaped row,
+    via score_from_counts() unmodified - the exact PRD §13 formula, whether
+    the counts came from the stored rollup or a live filtered read."""
+    labels = counts.pop('sentiment_labels', [])
+    row = score_from_counts(**counts, sentiment_index=sentiment_index_from_labels(labels))
+    row['date'] = date
+    row['engine_id'] = engine_id
+    return row
+
+
+def _region_filtered_series(workspace_id, *, start_date, end_date, region, providers, conn):
+    """The one case latest_metrics()/latest_metrics_all_engines() cannot
+    serve: metrics_daily has no region column, so a region filter has to be
+    computed live from the same evidence collect_counts() reads (via
+    collect_counts_range(), unmodified formula, just a wider/region-scoped
+    read), grouped by day exactly like the stored rollup - never persisted,
+    since this is a filtered view, not a new rollup.
+    """
+    by_day_provider = collect_counts_range(
+        workspace_id, start_date=start_date, end_date=end_date,
+        region=region, providers=providers, conn=conn)
+
+    all_providers = {provider for (_day, provider) in by_day_provider}
+    engine_id_by_provider = dict(conn.execute(
+        select(engines.c.display_name, engines.c.id).where(engines.c.display_name.in_(all_providers))
+    ).all()) if all_providers else {}
+
+    by_day = {}
+    for (day, provider), counts in by_day_provider.items():
+        by_day.setdefault(day, []).append((provider, dict(counts)))
+
+    series, per_engine = [], []
+    for day in sorted(by_day.keys(), reverse=True):
+        per_engine_scores = []
+        for provider, counts in by_day[day]:
+            row = _score_row(dict(counts), date=day, engine_id=engine_id_by_provider.get(provider))
+            per_engine_scores.append(row)
+            per_engine.append(dict(row))
+        blended = blend(per_engine_scores) if per_engine_scores else score_from_counts(
+            total_answers=0, mentioned=0, reciprocal_rank_sum=0.0, cited=0)
+        blended['date'] = day
+        blended['engine_id'] = None
+        series.append(blended)
+    return series, per_engine
+
+
+def analytics_report(workspace_id, user_id, filters=None):
+    """Dashboard payload. Reads metrics_daily and nothing else for its
+    numbers - unless a region filter is active, the one dimension
+    metrics_daily was never built to carry (see _region_filtered_series()).
 
     The previous version synthesised an "engines" list out of site-crawl sub-scores
     - Metadata, Content, Crawlability, Structured data - and rendered them where AI
@@ -35,25 +85,69 @@ def analytics_report(workspace_id, user_id):
     if not project:
         return None
 
-    series = latest_metrics(workspace_id)
-    latest = series[0] if series else None
-    per_engine = [row for row in latest_metrics_all_engines(workspace_id)
-                  if row['engine_id'] is not None]
-    # metrics_daily only stores engine_id; a dashboard has nothing to label a
-    # row with unless the name comes along for the ride.
-    if per_engine:
-        engine_ids = {row['engine_id'] for row in per_engine}
-        with engine.connect() as conn:
+    filters = filters or {}
+    start_date, end_date = filters.get('start_date'), filters.get('end_date')
+    region, engine_ids = filters.get('region'), filters.get('engine_ids')
+
+    with engine.connect() as conn:
+        if region:
+            providers = engine_providers_for_ids(engine_ids, conn) if engine_ids else None
+            series, per_engine = _region_filtered_series(
+                workspace_id, start_date=start_date, end_date=end_date,
+                region=region, providers=providers, conn=conn)
+        else:
+            per_engine = [row for row in latest_metrics_all_engines(
+                workspace_id, start_date=start_date, end_date=end_date)
+                if row['engine_id'] is not None]
+            if engine_ids:
+                per_engine = [row for row in per_engine if row['engine_id'] in engine_ids]
+                by_date = {}
+                for row in per_engine:
+                    by_date.setdefault(row['date'], []).append(row)
+                series = []
+                for date in sorted(by_date.keys(), reverse=True):
+                    blended = blend(by_date[date])
+                    blended['date'] = date
+                    blended['engine_id'] = None
+                    series.append(blended)
+            else:
+                series = latest_metrics(workspace_id, start_date=start_date, end_date=end_date)
+
+        # metrics_daily/the live computation only stores engine_id; a
+        # dashboard has nothing to label a row with unless the name comes
+        # along for the ride.
+        if per_engine:
+            present_ids = {row['engine_id'] for row in per_engine if row['engine_id'] is not None}
             names = {
                 erow['id']: {'key': erow['key'], 'display_name': erow['display_name']}
                 for erow in conn.execute(
                     select(engines.c.id, engines.c.key, engines.c.display_name)
-                    .where(engines.c.id.in_(engine_ids))
+                    .where(engines.c.id.in_(present_ids))
                 ).mappings()
-            }
-        for row in per_engine:
-            row.update(names.get(row['engine_id'], {'key': None, 'display_name': None}))
+            } if present_ids else {}
+            for row in per_engine:
+                row.update(names.get(row['engine_id'], {'key': None, 'display_name': None}))
 
+        # Collapse to one row per engine (the most recent date within the
+        # filtered range) for the comparison table - a snapshot, not a series.
+        latest_per_engine = {}
+        for row in per_engine:
+            existing = latest_per_engine.get(row['engine_id'])
+            if existing is None or str(row['date']) > str(existing['date']):
+                latest_per_engine[row['engine_id']] = row
+        per_engine = list(latest_per_engine.values())
+
+    scans_in_range = scan_history(workspace_id, filters=filters)
+    scan_summary = {
+        'total': len(scans_in_range),
+        'completed': sum(1 for s in scans_in_range if s['status'] == 'succeeded'),
+        'partial': sum(1 for s in scans_in_range if s['status'] == 'partial'),
+        'failed': sum(1 for s in scans_in_range if s['status'] == 'failed'),
+        'prompts_total': sum(s['prompt_count'] for s in scans_in_range),
+        'prompts_completed': sum(s['completed_count'] for s in scans_in_range),
+    }
+
+    latest = series[0] if series else None
     # Every metric leaves this function as {value, low, high, n} with an explicit
     # state, never as a bare number. T11: the product's stated differentiator.
     visibility = score_envelope(latest, has_completed_run=bool(series))
@@ -68,7 +162,9 @@ def analytics_report(workspace_id, user_id):
         'visibility': visibility,
         'history': [row_to_dict(row) for row in reversed(series)],
         'engines': [row_to_dict(row) for row in per_engine],
-        # Site health is a property of the website, not an engine result.
+        'scan_summary': scan_summary,
+        # Site health is a property of the website, not a filtered engine
+        # result - crawls have no engine/region dimension to filter by.
         'site_health': latest_site_audit(workspace_id),
         'topic_breakdown': topic_breakdown(workspace_id),
     }
@@ -200,7 +296,13 @@ def provider_evidence_rows(scan_id):
         evidence.append(item)
     return evidence
 
-def latest_prompt_evidence(workspace_id, run_id=None):
+def latest_prompt_evidence(workspace_id, run_id=None, filters=None):
+    """`filters` only narrows which run counts as "latest" - an explicit
+    run_id is always honored exactly (Scan Detail asked for that specific
+    scan; filters never hide it). Optional and default None, so every
+    existing caller (Mentions/Prompts pages, Scan Detail) is unaffected."""
+    from app.analytics_filters import scan_run_filter_clause
+
     with engine.connect() as conn:
         project = conn.execute(select(workspaces).where(
             workspaces.c.id == workspace_id
@@ -210,6 +312,9 @@ def latest_prompt_evidence(workspace_id, run_id=None):
         )
         if run_id:
             statement = statement.where(analytics_prompt_scan_runs.c.id == run_id)
+        elif filters:
+            providers = engine_providers_for_ids(filters.get('engine_ids'), conn)
+            statement = statement.where(scan_run_filter_clause(filters, providers=providers))
         scan = conn.execute(statement.order_by(desc(analytics_prompt_scan_runs.c.created_at)).limit(1)).mappings().first()
         if not scan:
             return {'run': None, 'answers': [], 'opportunities': [], 'history': []}
@@ -1133,7 +1238,7 @@ def scan_history(workspace_id, limit=200, *, filters=None, conn=None):
     (date range / region / engine_ids) - optional, so every existing caller
     that doesn't pass one keeps working unfiltered exactly as before.
     """
-    from app.analytics_filters import engine_providers_for_ids, scan_run_filter_clause
+    from app.analytics_filters import scan_run_filter_clause
 
     own_conn = conn is None
     conn = conn or engine.connect()

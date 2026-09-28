@@ -28,10 +28,16 @@
     deleteProject: function (id) {
       return apiCall('/api/analytics/projects/' + id, { method: 'DELETE' });
     },
-    getReport: function (id) { return apiCall('/api/analytics/projects/' + id + '/report'); },
-    getEvidence: function (id, runId) {
+    getReport: function (id, queryString) {
+      return apiCall('/api/analytics/projects/' + id + '/report' + (queryString || ''));
+    },
+    getEvidence: function (id, runId, queryString) {
       var url = '/api/analytics/projects/' + id + '/evidence';
-      if (runId) url += '?run_id=' + encodeURIComponent(runId);
+      if (runId) {
+        url += '?run_id=' + encodeURIComponent(runId);
+      } else if (queryString) {
+        url += queryString;
+      }
       return apiCall(url);
     },
     getScanHistory: function (id, queryString) {
