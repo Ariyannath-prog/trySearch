@@ -16,6 +16,7 @@ from app.engines.anthropic import AnthropicAdapter
 from app.engines.xai import XAIAdapter
 from app.engines.deepseek import DeepSeekAdapter
 from app.engines.meta import MetaAdapter
+from app.engines.openrouter import OpenRouterAdapter
 
 _ADAPTERS = {}
 
@@ -32,6 +33,7 @@ register(AnthropicAdapter)
 register(XAIAdapter)
 register(DeepSeekAdapter)
 register(MetaAdapter)
+register(OpenRouterAdapter)
 
 
 def adapter_for(key):

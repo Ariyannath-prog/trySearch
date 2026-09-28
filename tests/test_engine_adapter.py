@@ -17,6 +17,8 @@ from sqlalchemy import insert, select  # noqa: E402
 
 from app import scanning  # noqa: E402
 from app.db import engine  # noqa: E402
+from app.engines import deepseek as deepseek_engine  # noqa: E402
+from app.engines import openrouter as openrouter_engine  # noqa: E402
 from app.engines import perplexity as perplexity_engine  # noqa: E402
 from app.engines.base import EngineAdapter, EngineResult  # noqa: E402
 from app.engines.registry import adapter_for, registered_keys  # noqa: E402
@@ -237,6 +239,86 @@ class FailedEngineRunTests(unittest.TestCase):
                 analytics_prompt_scan_runs.c.job_id == job_id)).scalar_one()
         self.assertEqual(status, 'partial',
                          'one failed answer leaves the run partial, not failed')
+
+
+class OpenRouterAdapterTests(unittest.TestCase):
+    """OpenRouter is a separate registry entry from DeepSeek's native adapter
+    - these tests also confirm DeepSeek is untouched by its addition."""
+
+    def test_registered_separately_from_deepseek(self):
+        self.assertIn('openrouter', registered_keys())
+        self.assertIn('deepseek', registered_keys())
+        openrouter_adapter = adapter_for('openrouter')
+        deepseek_adapter = adapter_for('deepseek')
+        self.assertEqual(openrouter_adapter.key, 'openrouter')
+        self.assertEqual(deepseek_adapter.key, 'deepseek')
+        self.assertIsNot(type(openrouter_adapter), type(deepseek_adapter))
+
+    def test_deepseek_adapter_behavior_is_unchanged(self):
+        """DeepSeek still calls its own API root with its own env vars."""
+        payload = {'choices': [{'message': {'content': 'hello from deepseek'}}], 'model': 'deepseek-v4-pro'}
+        with patch.object(deepseek_engine, 'external_json_request', return_value=payload) as mock_call:
+            result = adapter_for('deepseek').run('prompt', credential='k')
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.answer_text, 'hello from deepseek')
+        called_url = mock_call.call_args[0][0]
+        self.assertEqual(called_url, deepseek_engine.API_ROOT)
+        self.assertIn('api.deepseek.com', called_url)
+
+    def test_satisfies_the_protocol(self):
+        adapter = adapter_for('openrouter')
+        self.assertIsInstance(adapter, EngineAdapter)
+        self.assertEqual(adapter.source_type, 'api')
+        self.assertFalse(adapter.supports_citations)
+        self.assertFalse(adapter.supports_regions)
+        self.assertIsInstance(adapter.estimate_cost('x'), Decimal)
+
+    def test_successful_response_is_parsed(self):
+        payload = {
+            'choices': [{'message': {'content': '  A grounded answer.  '}}],
+            'model': 'deepseek/deepseek-chat',
+        }
+        with patch.object(openrouter_engine, 'external_json_request', return_value=payload):
+            result = adapter_for('openrouter').run('a prompt', credential='sk-test')
+        self.assertEqual(result.status, 'ok')
+        self.assertEqual(result.answer_text, 'A grounded answer.')
+        self.assertEqual(result.model_version, 'deepseek/deepseek-chat')
+        self.assertEqual(result.citations, ())
+
+    def test_empty_content_is_empty_not_failed(self):
+        payload = {'choices': [{'message': {'content': ''}}], 'model': 'deepseek/deepseek-chat'}
+        with patch.object(openrouter_engine, 'external_json_request', return_value=payload):
+            result = adapter_for('openrouter').run('a prompt', credential='sk-test')
+        self.assertEqual(result.status, 'empty')
+
+    def test_missing_credential_fails_without_raising(self):
+        with patch.dict(os.environ, {'OPENROUTER_API_KEY': ''}, clear=False):
+            result = adapter_for('openrouter').run('a prompt', credential=None)
+        self.assertEqual(result.status, 'failed')
+        self.assertIn('No OpenRouter provider credential is configured.', result.error)
+
+    def test_transport_error_fails_without_raising(self):
+        with patch.object(openrouter_engine, 'external_json_request',
+                          side_effect=ProviderAPIError('OpenRouter is down')):
+            result = adapter_for('openrouter').run('a prompt', credential='sk-test')
+        self.assertEqual(result.status, 'failed')
+        self.assertIn('OpenRouter is down', result.error)
+
+    def test_model_defaults_to_an_openrouter_slug_and_is_env_configurable(self):
+        self.assertEqual(openrouter_engine.openrouter_model(), 'deepseek/deepseek-chat')
+        with patch.dict(os.environ, {'OPENROUTER_MODEL': 'openai/gpt-4o-mini'}, clear=False):
+            self.assertEqual(openrouter_engine.openrouter_model(), 'openai/gpt-4o-mini')
+            payload = {'choices': [{'message': {'content': 'ok'}}], 'model': 'openai/gpt-4o-mini'}
+            with patch.object(openrouter_engine, 'external_json_request', return_value=payload) as mock_call:
+                adapter_for('openrouter').run('a prompt', credential='sk-test')
+            sent_payload = mock_call.call_args.kwargs['payload']
+            self.assertEqual(sent_payload['model'], 'openai/gpt-4o-mini')
+
+    def test_credential_is_never_read_from_a_hardcoded_value(self):
+        """The API key must come from credential= or the env var, never a
+        literal in the module."""
+        source = pathlib.Path(openrouter_engine.__file__).read_text()
+        self.assertNotIn('sk-', source)
 
 
 if __name__ == '__main__':
