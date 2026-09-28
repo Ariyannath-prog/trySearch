@@ -1121,3 +1121,23 @@ def recommendation_intelligence(workspace_id, conn=None):
     recommendations.sort(key=lambda item: item['created_at'] or '', reverse=True)
     recommendations.sort(key=lambda item: priority_rank.get(item['priority'], 1))
     return recommendations
+
+
+def scan_history(workspace_id, limit=200):
+    """Every prompt-scan run for a workspace, newest first - plain columns
+    already stored on analytics_prompt_scan_runs, no aggregation. This is
+    the list latest_prompt_evidence(workspace_id, run_id) drills into for
+    one specific run's full evidence (unchanged, reused as-is)."""
+    with engine.connect() as conn:
+        rows = [row_to_dict(row) for row in conn.execute(
+            select(analytics_prompt_scan_runs)
+            .where(analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+            .order_by(desc(analytics_prompt_scan_runs.c.created_at))
+            .limit(limit)
+        ).mappings().all()]
+    for row in rows:
+        try:
+            row['competitor_snapshot'] = json.loads(row.get('competitor_snapshot') or '[]')
+        except json.JSONDecodeError:
+            row['competitor_snapshot'] = []
+    return rows

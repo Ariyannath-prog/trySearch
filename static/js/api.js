@@ -29,7 +29,12 @@
       return apiCall('/api/analytics/projects/' + id, { method: 'DELETE' });
     },
     getReport: function (id) { return apiCall('/api/analytics/projects/' + id + '/report'); },
-    getEvidence: function (id) { return apiCall('/api/analytics/projects/' + id + '/evidence'); },
+    getEvidence: function (id, runId) {
+      var url = '/api/analytics/projects/' + id + '/evidence';
+      if (runId) url += '?run_id=' + encodeURIComponent(runId);
+      return apiCall(url);
+    },
+    getScanHistory: function (id) { return apiCall('/api/analytics/projects/' + id + '/scans'); },
     getEvidenceAnswer: function (id, answerId) {
       return apiCall('/api/analytics/projects/' + id + '/evidence/' + answerId);
     },

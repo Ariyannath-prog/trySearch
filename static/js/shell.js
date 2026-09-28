@@ -40,6 +40,7 @@
     { v: 'competitors', t: 'Competitors', href: '/competitors', icon: 'competitors' },
     { v: 'sentiment', t: 'Sentiment', href: '/sentiment', icon: 'sentiment' },
     { v: 'prompts', t: 'Prompts', g: 'Track', href: '/prompt-intelligence', icon: 'prompts' },
+    { v: 'scans', t: 'Scan History', href: '/scans', icon: 'reports' },
     { v: 'site-audit', t: 'Site Audit', href: '/site-audit', icon: 'sitehealth' },
     { v: 'search-console', t: 'Analytics', href: '/search-console', icon: 'search-console' },
     { v: 'recommendations', t: 'Recommendations', g: 'Act', href: '/recommendations', icon: 'actions' },
