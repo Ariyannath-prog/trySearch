@@ -33,6 +33,13 @@ WEIGHT_CITATION_RATE = 0.2
 # PRD §13: on-demand runs are excluded, because they happen while someone is
 # actively optimising and would bias the series upward.
 SCHEDULED_RUN_TYPE = 'scheduled'
+ON_DEMAND_RUN_TYPE = 'on_demand'
+
+# The cohort for a *live* read of what a workspace has actually measured,
+# as opposed to the stored daily series. metrics_daily and the trend it
+# feeds stay scheduled-only; this exists so a scan someone just ran is not
+# invisible on their own dashboard until the next scheduled run.
+ALL_RUN_TYPES = (SCHEDULED_RUN_TYPE, ON_DEMAND_RUN_TYPE)
 
 
 def utc_today():
@@ -204,7 +211,8 @@ def collect_counts(workspace_id, day, conn):
 
 
 def collect_counts_range(workspace_id, *, start_date=None, end_date=None,
-                         region=None, providers=None, conn):
+                         region=None, providers=None,
+                         run_types=(SCHEDULED_RUN_TYPE,), conn):
     """collect_counts(), generalized from one day to a date range with an
     optional region filter - for the global analytics filter system's
     region case only. metrics_daily has no region column (collect_counts()
@@ -214,11 +222,15 @@ def collect_counts_range(workspace_id, *, start_date=None, end_date=None,
     Grouped by (date, provider) so the caller can run score_from_counts()/
     blend() - both unmodified - per day exactly as rollup_workspace_day()
     does, just without persisting the result to metrics_daily.
+
+    `run_types` defaults to scheduled-only, so metrics_daily and every
+    existing caller keep the exact PRD §13 cohort. Passing a wider tuple
+    (see ALL_RUN_TYPES) is how the dashboard reads a just-finished
+    on-demand scan without that scan ever reaching the stored rollup.
     """
-    conditions = (
-        (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
-        & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
-    )
+    conditions = (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+    if run_types:
+        conditions = conditions & (analytics_prompt_scan_runs.c.run_type.in_(tuple(run_types)))
     if start_date:
         conditions = conditions & (func.date(analytics_prompt_scan_runs.c.created_at) >= start_date)
     if end_date:
@@ -226,7 +238,11 @@ def collect_counts_range(workspace_id, *, start_date=None, end_date=None,
     if region:
         conditions = conditions & (analytics_prompt_scan_runs.c.region == region)
     if providers:
-        conditions = conditions & (analytics_prompt_scan_runs.c.provider.in_(providers))
+        # Filter the column this function actually groups and attributes counts
+        # by. The run's own `provider` is one legacy label for the whole run, so
+        # filtering on it drops every answer a multi-engine run produced on the
+        # other engines - including the engine the user selected.
+        conditions = conditions & (analytics_provider_answers.c.provider.in_(providers))
 
     rows = conn.execute(
         select(

@@ -15,7 +15,11 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select, true
 
 from app.db import engine
-from app.models import analytics_prompt_scan_runs, engines as engines_table
+from app.models import (
+    analytics_prompt_scan_runs,
+    analytics_provider_answers,
+    engines as engines_table,
+)
 
 
 class FilterError(ValueError):
@@ -57,20 +61,34 @@ def parse_date_range(args):
 
 
 def parse_engine_ids(args):
-    """engine_ids, repeated (?engine_ids=1&engine_ids=2) or comma-separated
-    (?engine_ids=1,2) - either form, from either a MultiDict or a plain
-    dict-like in tests. None means "no engine filter"."""
-    raw = []
+    """engine_ids, repeated (?engine_ids=1&engine_ids=2), comma-separated
+    (?engine_ids=1,2), or both at once - from either a MultiDict or a plain
+    dict-like in tests. None means "no engine filter".
+
+    The two forms are not alternatives to choose between. On a real
+    MultiDict, getlist() returns ['1,2'] for the comma form: one truthy
+    element, so an `if not raw:` fallback never fires and int('1,2') blows
+    up. app/static/js/components/filters.js only ever emits the comma form,
+    which made every filtered dashboard request a 400. So: take whatever
+    getlist() gives, then split each value on commas regardless.
+    """
     if hasattr(args, 'getlist'):
         raw = args.getlist('engine_ids')
-    if not raw:
+    else:
         single = args.get('engine_ids')
-        raw = single.split(',') if single else []
-    raw = [v for v in raw if v not in (None, '')]
-    if not raw:
+        raw = [single] if single else []
+
+    parts = [
+        part.strip()
+        for value in raw if value is not None
+        for part in str(value).split(',')
+    ]
+    # Both forms combined can repeat an id; keep first-seen order.
+    unique = list(dict.fromkeys(part for part in parts if part))
+    if not unique:
         return None
     try:
-        return [int(v) for v in raw]
+        return [int(part) for part in unique]
     except (TypeError, ValueError):
         raise FilterError('engine_ids must be integers.')
 
@@ -124,7 +142,18 @@ def scan_run_filter_clause(filters, *, providers=None):
     if filters.get('region'):
         conditions.append(analytics_prompt_scan_runs.c.region == filters['region'])
     if providers:
-        conditions.append(analytics_prompt_scan_runs.c.provider.in_(providers))
+        # analytics_prompt_scan_runs.provider is a single legacy label from the
+        # one-engine era; a multi-engine run stores only the first engine there
+        # while its answers carry the real per-engine provider. Matching the run
+        # label alone hides a run that genuinely answered on the selected engine,
+        # so a run also qualifies when any of its answers came from one.
+        conditions.append(
+            analytics_prompt_scan_runs.c.provider.in_(providers)
+            | select(analytics_provider_answers.c.id).where(
+                (analytics_provider_answers.c.scan_run_id == analytics_prompt_scan_runs.c.id)
+                & (analytics_provider_answers.c.provider.in_(providers))
+            ).exists()
+        )
     if not conditions:
         return true()
     result = conditions[0]

@@ -18,7 +18,7 @@ from app.extraction.mentions import domain_matches, project_brand_aliases, text_
 from app.jobs import latest_site_audit
 from app.llm import open_model_settings
 from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, competitors, mentions as mentions_table, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts, engines
-from app.rollup import SCHEDULED_RUN_TYPE, blend, collect_counts_range, latest_metrics, latest_metrics_all_engines, score_from_counts, sentiment_index_from_labels
+from app.rollup import ALL_RUN_TYPES, SCHEDULED_RUN_TYPE, blend, collect_counts_range, latest_metrics, latest_metrics_all_engines, score_from_counts, sentiment_index_from_labels
 from app.stats import MIN_ANSWERS_FOR_SCORE, describe_delta, metric, score_envelope
 from app.tenancy import workspace_for_member
 from app.utils import row_to_dict, to_iso
@@ -35,17 +35,24 @@ def _score_row(counts, *, date, engine_id=None):
     return row
 
 
-def _region_filtered_series(workspace_id, *, start_date, end_date, region, providers, conn):
-    """The one case latest_metrics()/latest_metrics_all_engines() cannot
-    serve: metrics_daily has no region column, so a region filter has to be
-    computed live from the same evidence collect_counts() reads (via
-    collect_counts_range(), unmodified formula, just a wider/region-scoped
-    read), grouped by day exactly like the stored rollup - never persisted,
-    since this is a filtered view, not a new rollup.
+def _live_series(workspace_id, *, start_date, end_date, region, providers, conn,
+                 run_types=(SCHEDULED_RUN_TYPE,)):
+    """Compute the metrics_daily-shaped series live from stored evidence.
+
+    Two cases need this. metrics_daily has no region column, so a region
+    filter cannot come from the stored rollup at all. And metrics_daily is
+    scheduled-only by design, so a workspace whose only real measurements
+    came from on-demand scans has an empty rollup and nothing to show -
+    `run_types` widens the cohort for that case without touching what gets
+    persisted.
+
+    Either way this runs collect_counts_range() + the *unmodified*
+    score_from_counts()/blend(), grouped by day exactly like the stored
+    rollup, and never writes a row: this is a filtered view, not a rollup.
     """
     by_day_provider = collect_counts_range(
         workspace_id, start_date=start_date, end_date=end_date,
-        region=region, providers=providers, conn=conn)
+        region=region, providers=providers, run_types=run_types, conn=conn)
 
     all_providers = {provider for (_day, provider) in by_day_provider}
     engine_id_by_provider = dict(conn.execute(
@@ -72,9 +79,22 @@ def _region_filtered_series(workspace_id, *, start_date, end_date, region, provi
 
 
 def analytics_report(workspace_id, user_id, filters=None):
-    """Dashboard payload. Reads metrics_daily and nothing else for its
-    numbers - unless a region filter is active, the one dimension
-    metrics_daily was never built to carry (see _region_filtered_series()).
+    """Dashboard payload.
+
+    `history` - the daily trend - is the stored rollup and nothing else, so
+    it stays scheduled-only and stays empty until enough scheduled days
+    exist. The KPI cards are a different question: "what have we actually
+    measured for this workspace, under these filters, right now". Answering
+    that only from metrics_daily means a scan someone just ran is invisible
+    on their own dashboard, because on-demand runs never reach the rollup.
+
+    So the KPI block prefers the stored rollup and falls back to a live
+    read of the same evidence, on-demand runs included, when the rollup has
+    measured nothing in range (see _live_series()). The fallback reuses the
+    unmodified PRD §13 formula and the same MIN_ANSWERS_FOR_SCORE gate, so a
+    Visibility Score is still withheld when the sample cannot support one -
+    nothing is invented to fill the cards. `visibility['source']` says which
+    path produced the numbers.
 
     The previous version synthesised an "engines" list out of site-crawl sub-scores
     - Metadata, Content, Crawlability, Structured data - and rendered them where AI
@@ -90,9 +110,9 @@ def analytics_report(workspace_id, user_id, filters=None):
     region, engine_ids = filters.get('region'), filters.get('engine_ids')
 
     with engine.connect() as conn:
+        providers = engine_providers_for_ids(engine_ids, conn) if engine_ids else None
         if region:
-            providers = engine_providers_for_ids(engine_ids, conn) if engine_ids else None
-            series, per_engine = _region_filtered_series(
+            series, per_engine = _live_series(
                 workspace_id, start_date=start_date, end_date=end_date,
                 region=region, providers=providers, conn=conn)
         else:
@@ -112,6 +132,24 @@ def analytics_report(workspace_id, user_id, filters=None):
                     series.append(blended)
             else:
                 series = latest_metrics(workspace_id, start_date=start_date, end_date=end_date)
+
+        # `history` keeps whatever the rollup gave it, always - the daily trend
+        # stays the stored, scheduled-only series and is allowed to be empty.
+        trend_series = series
+        kpi_source = 'scheduled_rollup'
+
+        # The rollup measured nothing in range. That is the normal state for a
+        # workspace whose real scans were all run on demand, and it is exactly
+        # when the cards must stop being blank: read the same evidence live,
+        # with on-demand runs included, through the same formula.
+        if not any((row.get('answer_count') or 0) for row in series):
+            live_series, live_per_engine = _live_series(
+                workspace_id, start_date=start_date, end_date=end_date,
+                region=region, providers=providers, conn=conn,
+                run_types=ALL_RUN_TYPES)
+            if any((row.get('answer_count') or 0) for row in live_series):
+                series, per_engine = live_series, live_per_engine
+                kpi_source = 'live_scan_evidence'
 
         # metrics_daily/the live computation only stores engine_id; a
         # dashboard has nothing to label a row with unless the name comes
@@ -156,11 +194,15 @@ def analytics_report(workspace_id, user_id, filters=None):
         visibility.get('visibility_score'),
         {'value': previous['visibility_score']} if previous else None,
     )
+    # Which cohort produced these cards, stated rather than implied: the
+    # scheduled daily rollup, or a live read that counts on-demand scans too.
+    visibility['source'] = kpi_source
+    visibility['includes_on_demand'] = kpi_source == 'live_scan_evidence'
 
     return {
         'project': row_to_dict(project),
         'visibility': visibility,
-        'history': [row_to_dict(row) for row in reversed(series)],
+        'history': [row_to_dict(row) for row in reversed(trend_series)],
         'engines': [row_to_dict(row) for row in per_engine],
         'scan_summary': scan_summary,
         # Site health is a property of the website, not a filtered engine

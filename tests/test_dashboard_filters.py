@@ -192,13 +192,24 @@ class RegionFilteringTests(unittest.TestCase):
         self.assertAlmostEqual(report['visibility']['visibility_score']['value'], 90.0, places=3)
         self.assertEqual(report['history'][0]['answer_count'], 20)
 
-    def test_no_region_filter_falls_back_to_metrics_daily_and_sees_nothing(self):
-        """No rollup has ever run for this workspace, so the unfiltered
-        (metrics_daily) path must show no data - proving it did not
-        accidentally read the raw evidence this test seeded."""
+    def test_no_region_filter_leaves_the_trend_empty_but_still_reports_the_cards(self):
+        """No rollup has ever run for this workspace.
+
+        The daily trend is the stored rollup and nothing else, so it stays
+        empty - that is the invariant, and it is what `history` asserts.
+
+        The KPI cards are a different question. This workspace has 23 real
+        measured answers; leaving the cards blank because nobody has run a
+        rollup yet is what made a just-finished scan invisible on its own
+        dashboard. They now fall back to a live read of that same evidence
+        and say so via `source`, rather than reporting "not yet run" about a
+        workspace that plainly has been measured.
+        """
         report = metrics.analytics_report(self.workspace_id, 98952)
-        self.assertEqual(report['history'], [])
-        self.assertEqual(report['visibility']['state'], 'not_yet_run')
+        self.assertEqual(report['history'], [],
+                         'the trend must not be back-filled from raw evidence')
+        self.assertEqual(report['visibility']['source'], 'live_scan_evidence')
+        self.assertEqual(report['visibility']['n'], 23)
 
 
 class ScanSummaryTests(unittest.TestCase):
