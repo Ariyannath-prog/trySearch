@@ -1,27 +1,29 @@
-const CACHE_NAME = 'trysearch-shell-v17';
+const CACHE_NAME = 'trysearch-shell-v18';
+
+// Only precache URLs that are guaranteed to exist. cache.addAll() rejects as a
+// unit, so a single 404 aborts install and leaves the previous service worker
+// in control permanently — which is exactly how the v17 shell got stuck.
 const APP_SHELL = [
   '/',
-  '/offline.html',
-  '/styles.css',
-  '/analytics.css',
-  '/prompt_intelligence.css',
-  '/visibility_tracking.css',
-  '/content_studio.css',
-  '/workspace.css',
-  '/script.js',
-  '/analytics.js',
-  '/prompt_intelligence.js',
-  '/visibility_tracking.js',
-  '/content_studio.js',
-  '/workspace.js',
-  '/three-home.js',
-  '/pwa.js',
   '/manifest.webmanifest',
   '/trysearch-logo.png'
 ];
 
+// Application code must never be served cache-first: a stale bundle renders an
+// old UI against a new API. These prefixes are always revalidated.
+const ALWAYS_REVALIDATE = ['/static/js/', '/static/css/', '/sw.js', '/pwa.js'];
+
+function isAppCode(pathname) {
+  return ALWAYS_REVALIDATE.some((prefix) => pathname.startsWith(prefix));
+}
+
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      // Per-entry so one missing asset cannot abort the whole installation.
+      .then((cache) => Promise.all(APP_SHELL.map((url) => cache.add(url).catch(() => null))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -40,7 +42,23 @@ self.addEventListener('fetch', (event) => {
       const copy = response.clone();
       caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
       return response;
-    }).catch(() => caches.match(request).then((cached) => cached || caches.match('/offline.html'))));
+    }).catch(() => caches.match(request).then((cached) => cached || caches.match('/'))));
+    return;
+  }
+
+  if (isAppCode(url.pathname)) {
+    // Network-first, and `cache: 'no-cache'` forces an HTTP revalidation so an
+    // edge-injected max-age cannot pin an old bundle in the browser HTTP cache.
+    // The origin sends strong ETags, so the common case is a cheap 304.
+    event.respondWith(
+      fetch(request, { cache: 'no-cache' }).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      }).catch(() => caches.match(request))
+    );
     return;
   }
 
