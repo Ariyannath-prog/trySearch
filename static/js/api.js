@@ -8,6 +8,10 @@
 
   window.TS = window.TS || {};
 
+  /* Always resolves, never rejects: every caller branches on `ok`, so a
+     dropped connection has to arrive as a result rather than as an
+     unhandled rejection that silently skips the caller's .then(). A
+     transport failure comes back as status 0 with networkError set. */
   function apiCall(url, opts) {
     opts = opts || {};
     opts.credentials = 'same-origin';
@@ -16,6 +20,8 @@
       return res.json().catch(function () { return null; }).then(function (body) {
         return { ok: res.ok, status: res.status, body: body };
       });
+    }).catch(function (err) {
+      return { ok: false, status: 0, body: null, networkError: true, error: err };
     });
   }
 

@@ -27,6 +27,63 @@
     }
   };
 
+  /* A non-2xx analytics response used to hit `if (!res.ok) return;` and
+     leave the page on its initial empty render, so a 400 was indistinguishable
+     from "you have no data". These map a status onto copy a user can act on.
+     The server's own message is deliberately not shown: it is written for a
+     developer and can carry validation/SQL detail. It goes to the console. */
+  var ERROR_COPY = {
+    0: {
+      title: 'Cannot reach trySearch',
+      body: 'Check your connection and try again.'
+    },
+    400: {
+      title: 'Those filters could not be applied',
+      body: 'The current date range, region or engine selection was rejected. Reset the filters to continue.',
+      resettable: true
+    },
+    401: {
+      title: 'Your session has expired',
+      body: 'Sign in again to keep working.',
+      signIn: true
+    },
+    403: {
+      title: 'No access to this project',
+      body: 'Your account cannot view this workspace. Switch projects, or ask an owner for access.'
+    },
+    404: {
+      title: 'Project not found',
+      body: 'This project may have been deleted. Pick another from the project switcher.'
+    },
+    429: {
+      title: 'Too many requests',
+      body: 'Slow down for a moment, then try again.'
+    }
+  };
+
+  var GENERIC_ERROR = {
+    title: 'Something went wrong',
+    body: 'We could not load this dashboard. Try again in a moment.'
+  };
+
+  function errorCopyFor(res) {
+    var status = res && res.status;
+    if (ERROR_COPY[status]) return ERROR_COPY[status];
+    if (status === 422) return ERROR_COPY[400];
+    return GENERIC_ERROR;
+  }
+
+  /* Full detail for whoever is debugging, never for the page. */
+  function logApiFailure(context, res) {
+    if (!window.console || !console.error) return;
+    console.error('[trySearch] ' + context + ' failed', {
+      status: res && res.status,
+      networkError: !!(res && res.networkError),
+      body: res && res.body,
+      error: res && res.error
+    });
+  }
+
   function $(sel, root) { return (root || document).querySelector(sel); }
   function text(el, value) { el.textContent = value == null ? '' : value; }
   function clearChildren(el) { while (el.firstChild) el.removeChild(el.firstChild); }
@@ -49,6 +106,7 @@
     '  </div>' +
     '</div>' +
     '<div class="hint" id="scan-status"></div>' +
+    '<div class="empty" id="load-error" role="alert" aria-live="polite" hidden style="margin:0 0 12px"></div>' +
     '<div class="panel"><div class="pb" id="filter-bar"></div></div>' +
     '<p class="hint" id="scan-summary-line" style="margin:0 0 10px"></p>' +
     '<div class="panel" id="quick-add-panel" hidden>' +
@@ -106,7 +164,10 @@
     TS.api.listProjects().then(function (res) {
       views.classList.remove('skel');
       if (!res.ok) {
-        views.innerHTML = '<div class="empty"><b>Something went wrong</b><p>Could not load your projects. Try reloading the page.</p></div>';
+        logApiFailure('GET projects', res);
+        var copy = errorCopyFor(res);
+        views.innerHTML = '<div class="empty" role="alert"><b>' + esc(copy.title) + '</b><p>' +
+          esc(copy.body) + '</p></div>';
         return;
       }
       state.projects = (res.body && res.body.projects) || [];
@@ -151,12 +212,58 @@
     });
   }
 
+  function hideLoadError() {
+    var el = $('#load-error');
+    if (el) el.hidden = true;
+  }
+
+  /* Visible, actionable, and never a stack trace. The detail goes to the
+     console; the page gets copy plus the one or two things worth doing. */
+  function showLoadError(context, res) {
+    logApiFailure(context, res);
+    var el = $('#load-error');
+    if (!el) return;
+    var copy = errorCopyFor(res);
+    var actions = '<button class="btn sm" id="load-error-retry" type="button">Try again</button>';
+    if (copy.resettable) {
+      actions += ' <button class="btn sm ghost" id="load-error-reset" type="button">Reset filters</button>';
+    }
+    if (copy.signIn) {
+      actions = '<a class="btn sm" href="/login">Sign in</a>';
+    }
+    el.innerHTML =
+      '<b>' + esc(copy.title) + '</b>' +
+      '<p>' + esc(copy.body) + '</p>' +
+      '<div style="margin-top:10px">' + actions + '</div>';
+    el.hidden = false;
+
+    var retry = $('#load-error-retry', el);
+    if (retry) {
+      retry.addEventListener('click', function () {
+        hideLoadError();
+        loadWorkspace(state.activeWorkspaceId);
+      });
+    }
+    var reset = $('#load-error-reset', el);
+    if (reset) {
+      reset.addEventListener('click', function () {
+        TS.filters.setState({ range: null, startDate: null, endDate: null, region: null, engineIds: [] });
+        hideLoadError();
+        loadWorkspace(state.activeWorkspaceId);
+      });
+    }
+  }
+
   function loadWorkspace(id) {
     state.activeWorkspaceId = id;
     if (state.pollTimer) { clearTimeout(state.pollTimer); state.pollTimer = null; }
     var queryString = TS.filters.toQueryString(TS.filters.getState());
     TS.api.getReport(id, queryString).then(function (res) {
-      if (!res.ok) return;
+      if (!res.ok) {
+        showLoadError('GET report', res);
+        return;
+      }
+      hideLoadError();
       state.report = res.body;
       text($('#project-name'), (res.body.project && (res.body.project.brand_name || res.body.project.domain)) || '');
       renderFilterBar(res.body.available_filters || { regions: [], engines: [] });
@@ -275,7 +382,12 @@
   function refreshEvidence(workspaceId) {
     var queryString = TS.filters.toQueryString(TS.filters.getState());
     TS.api.getEvidence(workspaceId, null, queryString).then(function (res) {
-      if (!res.ok || state.activeWorkspaceId !== workspaceId) return;
+      // A workspace switch mid-flight is not a failure, just a stale reply.
+      if (state.activeWorkspaceId !== workspaceId) return;
+      if (!res.ok) {
+        showLoadError('GET evidence', res);
+        return;
+      }
       renderEvidenceTable(res.body.evidence);
       if (res.body.active_job) {
         showScanRunning();
