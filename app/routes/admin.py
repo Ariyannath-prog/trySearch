@@ -39,6 +39,20 @@ def admin_organizations():
     return render_template('admin/organizations.html')
 
 
+@admin_bp.route('/plans')
+def admin_plans():
+    """Plan and entitlement management.
+
+    Page shell only: every field, limit and entitlement key is fetched from the
+    Phase A admin API at runtime, so the commercial model stays admin-controlled
+    and nothing about pricing is baked into this template.
+    """
+    error = require_platform_admin_page()
+    if error:
+        return error
+    return render_template('admin/plans.html')
+
+
 @admin_bp.route('/workspaces')
 def admin_workspaces():
     error = require_platform_admin_page()
