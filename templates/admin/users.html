@@ -126,7 +126,7 @@
   }
 
   async function updateUser(id, patch){
-    const res = await fetch('/api/admin/users/' + id, {
+    const res = await adminFetch('/api/admin/users/' + id, {
       method:'PATCH',
       credentials:'same-origin',
       headers:{

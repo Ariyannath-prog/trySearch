@@ -48,6 +48,17 @@ users = Table(
     Column('is_platform_admin', Boolean, nullable=False, default=False),
     Column('is_active', Boolean, nullable=False, default=True),
     Column('last_login_at', DateTime, nullable=True),
+    # NULL means unverified. Onboarding is hard-blocked until this is set; login
+    # still works, so the user can be directed to verification rather than stranded.
+    Column('email_verified_at', DateTime, nullable=True),
+    Column('terms_accepted_at', DateTime, nullable=True),
+    Column('terms_version', Text, nullable=True),
+    # email already carries a plain UNIQUE, which still lets 'A@x.com' and
+    # 'a@x.com' both exist. Normalising in Python alone does not hold under
+    # concurrency, so uniqueness is enforced on lower(email) by the database -
+    # the same reasoning behind uq_extractions_current_answer. A stored
+    # email_normalized column would merely be a second source of truth.
+    Index('uq_users_email_lower', text('lower(email)'), unique=True),
 )
 
 app_metadata = Table(
@@ -67,16 +78,34 @@ organizations = Table(
     metadata,
     Column('id', Integer, primary_key=True),
     Column('name', Text, nullable=False),
-    # The spec has plan_id REFERENCES plans(id), but plans does not exist yet -
-    # Stripe and plan gating are week 3+. Column kept, foreign key deferred until
-    # the table it points at is real.
-    Column('plan_id', Integer, nullable=True),
+    # plans exists as of the Phase A commercial-model migration, so the spec's
+    # `plan_id REFERENCES plans(id)` is finally a real foreign key. ON DELETE
+    # RESTRICT is what makes "a plan referenced by an organization cannot be
+    # deleted" a database guarantee rather than an application convention -
+    # archive/deactivate is the only retirement path.
+    Column('plan_id', Integer, ForeignKey('plans.id', ondelete='RESTRICT'),
+           nullable=True),
     Column('stripe_customer_id', Text, nullable=True),
+    # Commercial account type, deliberately NOT the subscription plan: a brand and
+    # an agency can sit on the same plan, and one plan may be sold to either.
+    Column('account_type', Text, nullable=False, server_default='brand'),
+    # What the entitlement layer reads to decide whether plan_id's limits apply
+    # right now. Stripe later writes these from webhook state; nothing fabricates
+    # billing in the meantime.
+    Column('plan_status', Text, nullable=False, server_default='none'),
+    Column('trial_ends_at', DateTime, nullable=True),
+    Column('plan_started_at', DateTime, nullable=True),
     # The plan's monthly spend ceiling in USD. Belongs on plans, which does not
     # exist until Stripe in week 3+, so it sits here and falls back to
     # DEFAULT_MONTHLY_COST_CEILING_USD when null.
     Column('monthly_cost_ceiling_usd', Numeric(10, 2), nullable=True),
     Column('created_at', DateTime, nullable=False),
+    CheckConstraint("account_type IN ('brand', 'agency')",
+                    name='ck_organizations_account_type'),
+    CheckConstraint(
+        "plan_status IN ('none', 'trialing', 'active', 'past_due', 'canceled')",
+        name='ck_organizations_plan_status',
+    ),
 )
 
 memberships = Table(
@@ -113,7 +142,17 @@ workspaces = Table(
     Column('website_url', String(2048), nullable=True),
     Column('industry', String(150), nullable=True),
     Column('updated_at', DateTime, nullable=True),
+    # geo above is the primary country (ISO 3166-1 alpha-2) and language is BCP-47.
+    # Both already existed; what changes in Phase A is that onboarding persists the
+    # user's selection instead of hardcoding 'US'/'en'. Geographic *reach* is a
+    # different axis and cannot be folded into a single text column, hence the two
+    # fields below. analytics_prompt_scan_runs.region is a per-run engine locale and
+    # is deliberately left alone.
+    Column('target_scope', Text, nullable=False, server_default='country'),
+    Column('target_locations', STRING_ARRAY, nullable=False, default=list),
     CheckConstraint("kind IN ('project', 'pitch')", name='ck_workspace_kind'),
+    CheckConstraint("target_scope IN ('city', 'region', 'country', 'worldwide')",
+                    name='ck_workspaces_target_scope'),
     CheckConstraint("status IN ('active', 'soft_deleted')", name='ck_workspace_status'),
     Index('ix_workspaces_org_active', 'org_id', postgresql_where=text("status = 'active'")),
 )
@@ -135,8 +174,15 @@ competitors = Table(
     Column('name', Text, nullable=False),
     Column('domains', STRING_ARRAY, nullable=False, default=list),
     Column('aliases', STRING_ARRAY, nullable=False, default=list),
+    # Where this *active* competitor came from. Enumerated, not free text. This is
+    # provenance on the kept record and explicitly not a suggestion-history system:
+    # rejected suggestions are never persisted at all, because onboarding's preview
+    # step writes nothing and approve inserts only what was submitted.
+    Column('source', Text, nullable=False, server_default='manual'),
     Column('created_at', DateTime, nullable=True),
     UniqueConstraint('workspace_id', 'name', name='uq_competitor_name'),
+    CheckConstraint("source IN ('ai_suggested', 'manual', 'imported')",
+                    name='ck_competitors_source'),
 )
 
 
@@ -715,4 +761,150 @@ system_settings = Table(
     Column('value', Text, nullable=False, server_default=''),
     Column('created_at', DateTime, nullable=False),
     Column('updated_at', DateTime, nullable=False),
+)
+
+
+# --- Commercial model: plans and entitlements --------------------------------
+# Plans are created and edited by platform admins at runtime, never seeded with
+# commercial pricing from a migration and never hardcoded in frontend code. A plan
+# is a draft (active=false) until an admin activates it, so nothing reaches a
+# customer by accident.
+
+plans = Table(
+    'plans',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('slug', Text, nullable=False, unique=True),
+    Column('name', Text, nullable=False),
+    Column('description', Text, nullable=False, server_default=''),
+    # Draft by default. active = orderable and visible to customers.
+    Column('active', Boolean, nullable=False, server_default=text('false')),
+    # Retired but still honoured for organizations already on it. There is no
+    # delete path for a plan anywhere in the application.
+    Column('archived_at', DateTime, nullable=True),
+    Column('display_order', Integer, nullable=False, server_default='0'),
+    Column('currency', String(3), nullable=False, server_default='USD'),
+    Column('billing_interval', Text, nullable=False, server_default='monthly'),
+    # Money is Numeric, never float - the same rule costs.py follows.
+    Column('price_monthly', Numeric(10, 2), nullable=True),
+    # Schema-ready for annual billing. Deliberately not exposed in the customer
+    # payload yet; monthly is the only interval sold in this phase.
+    Column('price_annual', Numeric(10, 2), nullable=True),
+    # 0 means no trial. One field rather than a boolean plus a duration that can
+    # contradict it.
+    Column('trial_days', Integer, nullable=False, server_default='0'),
+    # Which account types may buy this plan. text[] reuses the STRING_ARRAY
+    # convention domains/aliases already use.
+    Column('account_types', STRING_ARRAY, nullable=False, default=list),
+    # Infrastructure cost control, which models.py has always said belongs on the
+    # plan. Kept a column rather than an entitlement so money has one code path:
+    # costs.ceiling_for_org() resolves org override -> plan -> env default.
+    Column('monthly_cost_ceiling_usd', Numeric(10, 2), nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+    CheckConstraint("billing_interval IN ('monthly', 'annual')",
+                    name='ck_plans_billing_interval'),
+    CheckConstraint('trial_days >= 0', name='ck_plans_trial_days'),
+    CheckConstraint('display_order >= 0', name='ck_plans_display_order'),
+    CheckConstraint("account_types <@ ARRAY['brand', 'agency']::text[]",
+                    name='ck_plans_account_types'),
+    Index('ix_plans_active_order', 'display_order', 'id',
+          postgresql_where=text('active')),
+)
+
+
+# One row per (plan, entitlement key). value_type + JSONB rather than four mostly
+# NULL typed columns: it matches the JSONB already used by feature_flags.config and
+# admin_audit_logs.details, and the CHECK below makes type correctness a database
+# guarantee instead of an application convention.
+#
+# Which keys are meaningful is declared in app/entitlements.py. An admin can only
+# write a declared key, because a typo'd key would be a limit nobody enforces -
+# a silent commercial bug rather than a loud one.
+plan_entitlements = Table(
+    'plan_entitlements',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('plan_id', Integer, ForeignKey('plans.id', ondelete='CASCADE'),
+           nullable=False, index=True),
+    Column('key', Text, nullable=False),
+    Column('value_type', Text, nullable=False),
+    Column('value', JSONB, nullable=False),
+    Column('created_at', DateTime, nullable=False),
+    Column('updated_at', DateTime, nullable=False),
+    UniqueConstraint('plan_id', 'key', name='uq_plan_entitlement'),
+    CheckConstraint(
+        "(value_type = 'int' AND jsonb_typeof(value) = 'number') OR "
+        "(value_type = 'bool' AND jsonb_typeof(value) = 'boolean') OR "
+        "(value_type = 'string' AND jsonb_typeof(value) = 'string') OR "
+        "(value_type = 'list' AND jsonb_typeof(value) = 'array')",
+        name='ck_plan_entitlement_value',
+    ),
+)
+
+
+# --- Workspace-level access for client viewers -------------------------------
+# memberships stays the single org-level source of truth for roles. This table only
+# ever *narrows* access, and only for the client_viewer role:
+#
+#   owner / admin / member -> org membership alone grants the workspace (unchanged)
+#   client_viewer          -> org membership AND a row here for that workspace
+#
+# Without this, require_workspace()'s join on memberships.org_id hands every
+# client_viewer every workspace in the agency's org - i.e. one agency client could
+# see another agency client's data. A workspace_members table was rejected because
+# it would store roles in a second place.
+workspace_access = Table(
+    'workspace_access',
+    metadata,
+    Column('workspace_id', Integer, ForeignKey('workspaces.id', ondelete='CASCADE'),
+           primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'),
+           primary_key=True),
+    Column('granted_by', Integer, ForeignKey('users.id', ondelete='SET NULL'),
+           nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Index('ix_workspace_access_user', 'user_id'),
+)
+
+
+# --- Email verification and password reset -----------------------------------
+# Only the SHA-256 hash is stored. The raw secrets.token_urlsafe(32) exists solely
+# in the email that was sent, so a database read cannot be replayed as a credential.
+# `purpose` is why password reset reuses this table instead of a near-identical
+# second one. report_shares was considered for reuse and rejected: it is
+# workspace-scoped and stores its token in plaintext, which is fine for a share
+# link and not for an authentication credential.
+email_verification_tokens = Table(
+    'email_verification_tokens',
+    metadata,
+    Column('id', Integer, primary_key=True),
+    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'),
+           nullable=False),
+    Column('purpose', Text, nullable=False),
+    Column('token_hash', Text, nullable=False, unique=True),
+    Column('expires_at', DateTime, nullable=False),
+    Column('used_at', DateTime, nullable=True),
+    Column('created_at', DateTime, nullable=False),
+    Column('requested_ip', Text, nullable=True),
+    CheckConstraint("purpose IN ('email_verify', 'password_reset')",
+                    name='ck_evt_purpose'),
+    Index('ix_evt_user_purpose', 'user_id', 'purpose'),
+)
+
+
+# --- Rate limiting -----------------------------------------------------------
+# Fixed-window counters in PostgreSQL, because TrySearch runs under gunicorn: a
+# process-local counter would reset on every restart and would be wrong the moment
+# a second worker exists. One upsert per guarded request
+# (INSERT ... ON CONFLICT DO UPDATE ... RETURNING hits), so rows stay bounded at one
+# per key per window rather than one per event. Pruned by the existing CLI worker.
+rate_limit_counters = Table(
+    'rate_limit_counters',
+    metadata,
+    Column('bucket_key', Text, primary_key=True),
+    Column('window_start', DateTime, primary_key=True),
+    Column('hits', Integer, nullable=False, server_default='0'),
+    Column('updated_at', DateTime, nullable=False),
+    Index('ix_rate_limit_window', 'window_start'),
 )

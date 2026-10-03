@@ -38,6 +38,7 @@ from app.models import (
     engines as engines_table,
     workspace_engines,
 )
+from app.engines.registry import adapter_for
 from app.tenancy import require_workspace
 from app.scanning import next_schedule_time
 from app.utils import normalise_domain, row_to_dict
@@ -326,15 +327,28 @@ def analytics_engines_endpoint(workspace_id):
 
     Never returns credential/API-key data - onboarding's "choose engines"
     step is a name + checkbox list only, per product decision.
+
+    An engine is only offered if its adapter is actually registered. The engines
+    table can carry a row that is enabled before its module ships - Microsoft
+    Copilot is exactly that today, with adapter_version 'pending' and no adapter,
+    because it needs a different Entra/delegated OAuth architecture. Without this
+    filter a customer could select it, and scanning.enabled_engines() would
+    silently skip it at execution time: a chosen engine that never runs and never
+    explains why. Offering only implemented engines keeps the catalog, the registry
+    and the adapters consistent.
     """
     access, error = require_workspace(workspace_id)
     if error:
         return error
     with engine.connect() as conn:
-        engine_rows = conn.execute(
-            select(engines_table.c.id, engines_table.c.key, engines_table.c.display_name)
-            .where(engines_table.c.enabled).order_by(engines_table.c.id)
-        ).mappings().all()
+        engine_rows = [
+            row for row in conn.execute(
+                select(engines_table.c.id, engines_table.c.key,
+                       engines_table.c.display_name)
+                .where(engines_table.c.enabled).order_by(engines_table.c.id)
+            ).mappings().all()
+            if adapter_for(row['key']) is not None
+        ]
         selection = {
             row['engine_id']: row['enabled']
             for row in conn.execute(
@@ -372,9 +386,21 @@ def update_analytics_engines(workspace_id):
         return jsonify({'error': 'engine_ids must be a list of integers.'}), 400
     now = datetime.utcnow()
     with engine.begin() as conn:
-        platform_engine_ids = [row[0] for row in conn.execute(
-            select(engines_table.c.id).where(engines_table.c.enabled)
-        ).all()]
+        # Same rule as the GET: only engines with a registered adapter are
+        # selectable, so a saved selection can never contain one that cannot run.
+        platform_engine_ids = [
+            row[0] for row in conn.execute(
+                select(engines_table.c.id, engines_table.c.key)
+                .where(engines_table.c.enabled)
+            ).all() if adapter_for(row[1]) is not None
+        ]
+        unavailable = selected_ids - set(platform_engine_ids)
+        if unavailable:
+            return jsonify({
+                'error': 'One or more selected engines are not available on this '
+                         'platform.',
+                'engine_ids': sorted(unavailable),
+            }), 400
         existing = {
             row['engine_id']: row['id']
             for row in conn.execute(

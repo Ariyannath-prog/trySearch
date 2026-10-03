@@ -11,6 +11,7 @@ from app.admin_audit import write_admin_audit
 from app.db import engine
 from app.engines.registry import adapter_for, registered_keys
 from app.provider_credentials import decrypt_secret, encrypt_secret, secret_hint
+from app.utils import row_to_dict
 from app.models import (
     admin_audit_logs,
     engines,
@@ -1719,4 +1720,259 @@ def admin_update_user(user_id):
     return jsonify({
         'status': 'updated',
         'user': dict(updated),
+    })
+
+
+@admin_api_bp.route('/organizations/<int:org_id>', methods=['PATCH'])
+def admin_update_organization(org_id):
+    """Assign a plan, set the account type, or override the spend ceiling.
+
+    This is the only place a plan is attached to an organization. An organization
+    admin cannot reach it: global commercial decisions are platform-admin only, and
+    `require_platform_admin_api()` is what separates the two.
+    """
+    error = require_platform_admin_api()
+    if error:
+        return error
+
+    from decimal import Decimal, InvalidOperation
+
+    from app.models import plans as plans_table
+
+    actor = get_platform_admin()
+    data = request.get_json(silent=True) or {}
+
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Request body must be a JSON object.'}), 400
+
+    allowed = {'plan_id', 'account_type', 'plan_status', 'monthly_cost_ceiling_usd',
+               'trial_ends_at'}
+    unknown = set(data) - allowed
+    if unknown:
+        return jsonify({'error': 'Unsupported fields.', 'fields': sorted(unknown)}), 400
+    if not data:
+        return jsonify({'error': 'No supported changes supplied.'}), 400
+
+    values = {}
+
+    if 'account_type' in data:
+        account_type = str(data.get('account_type') or '').strip().lower()
+        if account_type not in ('brand', 'agency'):
+            return jsonify({'error': "account_type must be 'brand' or 'agency'."}), 400
+        values['account_type'] = account_type
+
+    if 'plan_status' in data:
+        plan_status = str(data.get('plan_status') or '').strip().lower()
+        valid_statuses = ('none', 'trialing', 'active', 'past_due', 'canceled')
+        if plan_status not in valid_statuses:
+            return jsonify({
+                'error': f'plan_status must be one of {", ".join(valid_statuses)}.'}), 400
+        values['plan_status'] = plan_status
+
+    if 'monthly_cost_ceiling_usd' in data:
+        raw = data['monthly_cost_ceiling_usd']
+        if raw is None or raw == '':
+            # Cleared, so the plan's ceiling (then the env default) applies again.
+            values['monthly_cost_ceiling_usd'] = None
+        else:
+            try:
+                ceiling = Decimal(str(raw))
+            except (InvalidOperation, ValueError, TypeError):
+                return jsonify({
+                    'error': 'monthly_cost_ceiling_usd must be a decimal amount.'}), 400
+            if ceiling < 0:
+                return jsonify({
+                    'error': 'monthly_cost_ceiling_usd cannot be negative.'}), 400
+            values['monthly_cost_ceiling_usd'] = ceiling
+
+    if 'trial_ends_at' in data:
+        raw = data['trial_ends_at']
+        if raw in (None, ''):
+            values['trial_ends_at'] = None
+        else:
+            try:
+                values['trial_ends_at'] = datetime.fromisoformat(
+                    str(raw).replace('Z', ''))
+            except ValueError:
+                return jsonify({
+                    'error': 'trial_ends_at must be an ISO 8601 timestamp or null.'}), 400
+
+    if 'plan_id' in data:
+        plan_id = data['plan_id']
+        if plan_id is not None and (isinstance(plan_id, bool) or not isinstance(plan_id, int)):
+            return jsonify({'error': 'plan_id must be an integer or null.'}), 400
+        values['plan_id'] = plan_id
+
+    with engine.begin() as conn:
+        before = conn.execute(
+            select(
+                organizations.c.id,
+                organizations.c.name,
+                organizations.c.plan_id,
+                organizations.c.account_type,
+                organizations.c.plan_status,
+                organizations.c.trial_ends_at,
+                organizations.c.monthly_cost_ceiling_usd,
+            ).where(organizations.c.id == org_id)
+        ).mappings().first()
+
+        if not before:
+            return jsonify({'error': 'Organization not found.'}), 404
+        before = dict(before)
+
+        if values.get('plan_id') is not None:
+            plan_row = conn.execute(
+                select(plans_table.c.id, plans_table.c.slug, plans_table.c.archived_at,
+                       plans_table.c.account_types)
+                .where(plans_table.c.id == values['plan_id'])
+            ).mappings().first()
+            if not plan_row:
+                return jsonify({'error': 'Plan not found.'}), 404
+            if plan_row['archived_at'] is not None:
+                return jsonify({
+                    'error': 'That plan is archived and cannot be assigned.'}), 409
+            # The organization's account type - whichever it will be after this
+            # request - has to be one the plan is sold to.
+            effective_account_type = values.get('account_type', before['account_type'])
+            available_to = list(plan_row['account_types'] or [])
+            if available_to and effective_account_type not in available_to:
+                return jsonify({
+                    'error': f"That plan is not available to '{effective_account_type}' "
+                             f'organizations.',
+                    'account_types': available_to,
+                }), 409
+            # Assigning a plan with no explicit status would leave entitlements
+            # inert, because only 'trialing'/'active' put a plan in force.
+            # Assigning a plan while plan_status is still 'none' would leave the
+            # entitlements inert, because only 'trialing'/'active' put a plan in
+            # force. Default to a trial when the plan offers one, otherwise active.
+            if before['plan_status'] == 'none' and 'plan_status' not in values:
+                values['plan_status'] = 'active'
+
+        after = {**before, **values}
+
+        if all(before.get(key) == values[key] for key in values):
+            unchanged = row_to_dict(before)
+            if unchanged.get('monthly_cost_ceiling_usd') is not None:
+                unchanged['monthly_cost_ceiling_usd'] = str(
+                    unchanged['monthly_cost_ceiling_usd'])
+            return jsonify({'status': 'unchanged', 'organization': unchanged})
+
+        set_values = dict(values)
+        if values.get('plan_id') is not None and before['plan_id'] != values['plan_id']:
+            set_values['plan_started_at'] = datetime.utcnow()
+
+        conn.execute(update(organizations).where(organizations.c.id == org_id)
+                     .values(**set_values))
+
+        def _safe(mapping):
+            out = {}
+            for key, value in mapping.items():
+                if isinstance(value, datetime):
+                    out[key] = value.isoformat()
+                elif hasattr(value, 'quantize'):
+                    out[key] = str(value)
+                else:
+                    out[key] = value
+            return out
+
+        action = ('org.plan_changed'
+                  if 'plan_id' in values and before['plan_id'] != values['plan_id']
+                  else 'org.updated')
+        if set(values) == {'account_type'}:
+            action = 'org.account_type_changed'
+
+        write_admin_audit(
+            actor['id'], action, target_type='organization', target_id=org_id,
+            details={
+                'name': before['name'],
+                'before': _safe({key: before.get(key) for key in set_values}),
+                'after': _safe({key: after.get(key) for key in set_values}),
+            },
+            request=request, conn=conn,
+        )
+
+        updated = conn.execute(
+            select(
+                organizations.c.id,
+                organizations.c.name,
+                organizations.c.plan_id,
+                organizations.c.account_type,
+                organizations.c.plan_status,
+                organizations.c.trial_ends_at,
+                organizations.c.plan_started_at,
+                organizations.c.monthly_cost_ceiling_usd,
+                organizations.c.created_at,
+            ).where(organizations.c.id == org_id)
+        ).mappings().first()
+
+    payload = row_to_dict(updated)
+    if payload.get('monthly_cost_ceiling_usd') is not None:
+        payload['monthly_cost_ceiling_usd'] = str(payload['monthly_cost_ceiling_usd'])
+
+    return jsonify({'status': 'updated', 'organization': payload})
+
+
+@admin_api_bp.route('/audit-logs', methods=['GET'])
+def admin_audit_logs_endpoint():
+    """Read the admin audit trail.
+
+    The table has been written since the admin foundation migration but never had a
+    read endpoint, which left /admin/audit a placeholder and the trail effectively
+    write-only.
+    """
+    error = require_platform_admin_api()
+    if error:
+        return error
+
+    try:
+        limit = min(max(int(request.args.get('limit', 50)), 1), 200)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'limit must be an integer.'}), 400
+    try:
+        offset = max(int(request.args.get('offset', 0)), 0)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'offset must be an integer.'}), 400
+
+    action = (request.args.get('action') or '').strip()
+    target_type = (request.args.get('target_type') or '').strip()
+
+    conditions = []
+    if action:
+        conditions.append(admin_audit_logs.c.action.ilike(f'%{action}%'))
+    if target_type:
+        conditions.append(admin_audit_logs.c.target_type == target_type)
+
+    stmt = select(
+        admin_audit_logs.c.id,
+        admin_audit_logs.c.actor_user_id,
+        users.c.username.label('actor_username'),
+        admin_audit_logs.c.action,
+        admin_audit_logs.c.target_type,
+        admin_audit_logs.c.target_id,
+        admin_audit_logs.c.details,
+        admin_audit_logs.c.ip_address,
+        admin_audit_logs.c.created_at,
+    ).select_from(
+        admin_audit_logs.outerjoin(users, users.c.id == admin_audit_logs.c.actor_user_id)
+    ).order_by(admin_audit_logs.c.created_at.desc(), admin_audit_logs.c.id.desc())
+
+    count_stmt = select(func.count()).select_from(admin_audit_logs)
+
+    for condition in conditions:
+        stmt = stmt.where(condition)
+        count_stmt = count_stmt.where(condition)
+
+    with engine.connect() as conn:
+        rows = conn.execute(stmt.limit(limit).offset(offset)).mappings().all()
+        total = conn.execute(count_stmt).scalar_one()
+
+    # user_agent is deliberately not returned: it adds noise to the UI and is kept
+    # for forensics rather than for browsing.
+    return jsonify({
+        'events': [row_to_dict(row) for row in rows],
+        'count': len(rows),
+        'total': total,
+        'limit': limit,
+        'offset': offset,
     })

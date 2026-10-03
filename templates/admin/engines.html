@@ -234,7 +234,7 @@
 
         if(!confirm('Are you sure you want to ' + action + ' ' + e.display_name + '?')) return;
 
-        const updateRes = await fetch('/api/admin/engines/' + id, {
+        const updateRes = await adminFetch('/api/admin/engines/' + id, {
           method: 'PATCH',
           credentials: 'same-origin',
           headers: {'Content-Type':'application/json'},

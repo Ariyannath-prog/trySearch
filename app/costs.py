@@ -16,7 +16,7 @@ from decimal import Decimal
 from sqlalchemy import func, insert, select
 
 from app.db import engine
-from app.models import organizations, usage_ledger
+from app.models import organizations, plans, usage_ledger
 
 # PRD §6a, per answer. Money is Decimal, never float.
 PROVIDER_COSTS = {
@@ -102,11 +102,35 @@ def month_to_date_spend(org_id, *, today=None):
 
 
 def ceiling_for_org(org_id):
+    """Resolve the monthly ceiling: org override -> plan -> env default.
+
+    models.py always said this belongs on the plan, and as of the Phase A
+    commercial-model migration it can: plans.monthly_cost_ceiling_usd is the
+    plan's allowance, and organizations.monthly_cost_ceiling_usd stays an explicit
+    per-org override.
+
+    Deliberately a column on plans rather than a plan entitlement, so money has one
+    code path. Order matters and is checked in one query: an org that already has an
+    explicit ceiling keeps it, and an org with no plan still lands on the same env
+    default it used before plans existed - so nothing changes for existing orgs.
+    """
     with engine.connect() as conn:
-        configured = conn.execute(
-            select(organizations.c.monthly_cost_ceiling_usd)
+        row = conn.execute(
+            select(
+                organizations.c.monthly_cost_ceiling_usd.label('org_ceiling'),
+                plans.c.monthly_cost_ceiling_usd.label('plan_ceiling'),
+            )
+            .select_from(
+                organizations.outerjoin(plans, plans.c.id == organizations.c.plan_id)
+            )
             .where(organizations.c.id == org_id)
-        ).scalar_one_or_none()
+        ).mappings().first()
+
+    if row is None:
+        return default_ceiling()
+    configured = row['org_ceiling']
+    if configured is None:
+        configured = row['plan_ceiling']
     if configured is None:
         return default_ceiling()
     return Decimal(str(configured))

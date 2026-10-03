@@ -15,8 +15,16 @@ def write_admin_audit(
     target_id=None,
     details=None,
     request=None,
+    conn=None,
 ):
-    """Persist one platform-admin action."""
+    """Persist one platform-admin action.
+
+    Pass `conn` to write the audit row inside the caller's open transaction, which
+    is what commercially sensitive changes need: the change and the record of who
+    made it either both land or neither does. Omitting it keeps the original
+    behaviour of committing on its own connection, so existing callers are
+    unaffected.
+    """
     values = {
         'actor_user_id': actor_user_id,
         'action': action,
@@ -30,5 +38,11 @@ def write_admin_audit(
         values['ip_address'] = request.headers.get('CF-Connecting-IP') or request.remote_addr
         values['user_agent'] = (request.user_agent.string or '')[:2000]
 
-    with engine.begin() as conn:
-        conn.execute(insert(admin_audit_logs).values(**values))
+    statement = insert(admin_audit_logs).values(**values)
+
+    if conn is not None:
+        conn.execute(statement)
+        return
+
+    with engine.begin() as own_conn:
+        own_conn.execute(statement)

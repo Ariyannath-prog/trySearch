@@ -59,6 +59,21 @@
     }
   </style>
   {% block head %}{% endblock %}
+  <script>
+    /* Per-session CSRF token, injected by app/security.py's context processor.
+       Admin pages call fetch() directly rather than through static/js/api.js, so
+       they attach it with adminFetch below. */
+    window.TS_CSRF = {{ csrf_token | tojson }};
+    window.adminFetch = function (url, opts) {
+      opts = opts || {};
+      opts.credentials = opts.credentials || 'same-origin';
+      var method = (opts.method || 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'HEAD') {
+        opts.headers = Object.assign({}, opts.headers || {}, { 'X-CSRF-Token': window.TS_CSRF });
+      }
+      return fetch(url, opts);
+    };
+  </script>
 </head>
 <body>
 <div class="admin-shell">

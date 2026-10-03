@@ -8,14 +8,33 @@
 
   window.TS = window.TS || {};
 
-  /* Always resolves, never rejects: every caller branches on `ok`, so a
-     dropped connection has to arrive as a result rather than as an
-     unhandled rejection that silently skips the caller's .then(). A
-     transport failure comes back as status 0 with networkError set. */
-  function apiCall(url, opts) {
-    opts = opts || {};
-    opts.credentials = 'same-origin';
-    if (opts.body && !opts.headers) opts.headers = { 'Content-Type': 'application/json' };
+  /* CSRF: the server holds a per-session token and refuses state-changing /api/
+     requests without it (app/security.py). Every mutating call in the product
+     already goes through apiCall, so attaching it here covers all of them rather
+     than asking each page script to remember.
+
+     The token is cached after the first fetch and re-fetched once on a 403
+     csrf_invalid, which is what a rotated token after login looks like from here. */
+  var MUTATING = { POST: 1, PUT: 1, PATCH: 1, DELETE: 1 };
+  var csrfToken = null;
+
+  function fetchCsrfToken() {
+    return fetch('/api/csrf-token', { credentials: 'same-origin' })
+      .then(function (res) { return res.json(); })
+      .then(function (body) {
+        csrfToken = (body && body.csrf_token) || null;
+        return csrfToken;
+      })
+      .catch(function () { return null; });
+  }
+
+  /* Exposed so a page that reads /api/me itself can seed the cache without a
+     second round trip -- /api/me returns csrf_token too. */
+  function setCsrfToken(token) {
+    if (token) csrfToken = token;
+  }
+
+  function rawCall(url, opts) {
     return fetch(url, opts).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (body) {
         return { ok: res.ok, status: res.status, body: body };
@@ -25,8 +44,54 @@
     });
   }
 
+  /* Always resolves, never rejects: every caller branches on `ok`, so a
+     dropped connection has to arrive as a result rather than as an
+     unhandled rejection that silently skips the caller's .then(). A
+     transport failure comes back as status 0 with networkError set. */
+  function apiCall(url, opts) {
+    opts = opts || {};
+    opts.credentials = 'same-origin';
+    if (opts.body && !opts.headers) opts.headers = { 'Content-Type': 'application/json' };
+
+    var method = (opts.method || 'GET').toUpperCase();
+    if (!MUTATING[method]) return rawCall(url, opts);
+
+    function send(token, isRetry) {
+      var headers = {};
+      var key;
+      for (key in (opts.headers || {})) {
+        if (Object.prototype.hasOwnProperty.call(opts.headers, key)) headers[key] = opts.headers[key];
+      }
+      if (token) headers['X-CSRF-Token'] = token;
+      var attempt = {};
+      for (key in opts) {
+        if (Object.prototype.hasOwnProperty.call(opts, key)) attempt[key] = opts[key];
+      }
+      attempt.headers = headers;
+      return rawCall(url, attempt).then(function (res) {
+        var rejected = res.status === 403 && res.body && res.body.code === 'csrf_invalid';
+        if (rejected && !isRetry) {
+          /* The session token changed under us (login rotates it). Re-fetch once
+             and replay -- but only once, so a genuine refusal cannot loop. */
+          return fetchCsrfToken().then(function (fresh) { return send(fresh, true); });
+        }
+        return res;
+      });
+    }
+
+    if (csrfToken) return send(csrfToken, false);
+    return fetchCsrfToken().then(function (token) { return send(token, false); });
+  }
+
   TS.api = {
-    getMe: function () { return apiCall('/api/me'); },
+    setCsrfToken: setCsrfToken,
+    refreshCsrfToken: fetchCsrfToken,
+    getMe: function () {
+      return apiCall('/api/me').then(function (res) {
+        if (res.body && res.body.csrf_token) setCsrfToken(res.body.csrf_token);
+        return res;
+      });
+    },
     listProjects: function () { return apiCall('/api/analytics/projects'); },
     createProject: function (data) {
       return apiCall('/api/analytics/projects', { method: 'POST', body: JSON.stringify(data) });
@@ -145,6 +210,11 @@
     },
     generateContentDocument: function (id) {
       return apiCall('/api/content-studio/documents/' + id + '/generate', { method: 'POST', body: '{}' });
+    },
+    /* Plans are read from the backend and never hardcoded here: prices, limits and
+       feature availability all come from the admin-controlled plan record. */
+    listAvailablePlans: function (accountType) {
+      return apiCall('/api/plans' + (accountType ? '?account_type=' + encodeURIComponent(accountType) : ''));
     },
   };
 })();

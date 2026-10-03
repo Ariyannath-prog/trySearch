@@ -31,6 +31,7 @@ from app.db import engine
 from app.models import contacts
 from app.utils import row_to_dict
 from app.admin_auth import require_platform_admin_page
+from app.security import issue_token
 
 pages_bp = Blueprint('pages', __name__)
 
@@ -184,7 +185,10 @@ def profile_page():
 
 @pages_bp.route('/login')
 def login_page():
-    # simple HTML page that posts to /api/login via fetch
+    # simple HTML page that posts to /api/login via fetch.
+    # Built as a plain string rather than a Jinja template, so the CSRF token the
+    # context processor exposes to templates has to be interpolated by hand here.
+    csrf = issue_token()
     html = """
     <!doctype html>
     <html>
@@ -192,6 +196,7 @@ def login_page():
         <meta charset='utf-8'>
         <meta name='viewport' content='width=device-width,initial-scale=1'>
         <title>Login</title>
+        <meta id='csrf' content='__CSRF_TOKEN__'>
         <style>*{box-sizing:border-box}body{font-family:system-ui,sans-serif;min-height:100vh;margin:0;padding:clamp(1rem,5vw,2rem);display:grid;align-content:center;background:#0b1220;color:#eef3ff}form{width:min(100%,26rem)}label{display:grid;gap:.4rem;margin:.8rem 0}input{padding:.7rem;width:100%;border-radius:8px;border:1px solid #333;background:#071018;color:#eef3ff;font-size:16px}button{margin-top:1rem;padding:.75rem 1rem;border-radius:8px;background:#ffba08;border:none;color:#061018;font-weight:700;cursor:pointer}a{color:#6eaff0}@media(max-width:400px){button{width:100%}}</style>
       </head>
       <body>
@@ -205,6 +210,7 @@ def login_page():
         <p>New? <a href='/register'>Create an account</a></p>
         <p id='note'></p>
         <script>
+          const CSRF=document.getElementById('csrf').content;
           const form=document.getElementById('login-form');
           form.addEventListener('submit', async e=>{
             e.preventDefault();
@@ -213,7 +219,7 @@ def login_page():
               password: form.password.value,
               remember: form.remember.checked
             };
-            const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+            const res=await fetch('/api/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify(data)});
             const j=await res.json();
             const note=document.getElementById('note');
             if(res.ok){ note.textContent='Logged in. Redirecting...'; setTimeout(()=>location.href='/analytics',400); } else { note.textContent = j.error || 'Login failed'; }
@@ -222,10 +228,11 @@ def login_page():
       </body>
     </html>
     """
-    return html
+    return html.replace('__CSRF_TOKEN__', csrf)
 
 @pages_bp.route('/register')
 def register_page():
+    csrf = issue_token()
     html = """
     <!doctype html>
     <html>
@@ -233,6 +240,7 @@ def register_page():
         <meta charset='utf-8'>
         <meta name='viewport' content='width=device-width,initial-scale=1'>
         <title>Register</title>
+        <meta id='csrf' content='__CSRF_TOKEN__'>
         <style>*{box-sizing:border-box}body{font-family:system-ui,sans-serif;min-height:100vh;margin:0;padding:clamp(1rem,5vw,2rem);display:grid;align-content:center;background:#0b1220;color:#eef3ff}form{width:min(100%,26rem)}label{display:grid;gap:.4rem;margin:.8rem 0}input{padding:.7rem;width:100%;border-radius:8px;border:1px solid #333;background:#071018;color:#eef3ff;font-size:16px}button{margin-top:1rem;padding:.75rem 1rem;border-radius:8px;background:#ffba08;border:none;color:#061018;font-weight:700;cursor:pointer}a{color:#6eaff0}@media(max-width:400px){button{width:100%}}</style>
       </head>
       <body>
@@ -246,11 +254,12 @@ def register_page():
         <p>Have an account? <a href='/login'>Log in</a></p>
         <p id='note'></p>
         <script>
+          const CSRF=document.getElementById('csrf').content;
           const form=document.getElementById('reg-form');
           form.addEventListener('submit', async e=>{
             e.preventDefault();
             const data={username:form.username.value,email:form.email.value,password:form.password.value};
-            const res=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+            const res=await fetch('/api/register',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify(data)});
             const j=await res.json();
             const note=document.getElementById('note');
             if(res.ok){ note.textContent='Registered. Redirecting to login...'; setTimeout(()=>location.href='/login',800); } else { note.textContent = j.error || 'Registration failed'; }
@@ -259,7 +268,7 @@ def register_page():
       </body>
     </html>
     """
-    return html
+    return html.replace('__CSRF_TOKEN__', csrf)
 
 @pages_bp.route('/admin/contacts')
 def admin_contacts():

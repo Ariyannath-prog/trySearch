@@ -344,7 +344,7 @@
 
         if(secret) payload.secret = secret;
 
-        const updateRes = await fetch('/api/admin/api-keys/' + id, {
+        const updateRes = await adminFetch('/api/admin/api-keys/' + id, {
           method:'PATCH',
           credentials:'same-origin',
           headers:{'Content-Type':'application/json'},
@@ -373,7 +373,7 @@
         detailMessage.textContent = 'Testing the provider connection…';
 
         try {
-          const testRes = await fetch('/api/admin/api-keys/' + id + '/test', {
+          const testRes = await adminFetch('/api/admin/api-keys/' + id + '/test', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -459,7 +459,7 @@
       enabled: document.getElementById('enabled').checked
     };
 
-    const res = await fetch('/api/admin/api-keys', {
+    const res = await adminFetch('/api/admin/api-keys', {
       method:'POST',
       credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
