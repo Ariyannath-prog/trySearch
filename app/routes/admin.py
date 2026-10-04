@@ -85,6 +85,20 @@ def admin_audit():
     return render_template('admin/audit.html')
 
 
+@admin_bp.route('/email')
+def admin_email():
+    """Email provider configuration.
+
+    Page shell only: the provider catalog, current settings and effective status
+    all come from /api/admin/email-settings at runtime. No credential is ever
+    rendered into this template.
+    """
+    error = require_platform_admin_page()
+    if error:
+        return error
+    return render_template('admin/email.html')
+
+
 @admin_bp.route('/settings')
 def admin_settings():
     error = require_platform_admin_page()

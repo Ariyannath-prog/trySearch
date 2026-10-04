@@ -42,6 +42,7 @@ def create_app():
     from app.integrations.gsc import gsc_bp
     from app.routes.analytics import analytics_bp
     from app.routes.admin_api import admin_api_bp
+    from app.routes.admin_email import admin_email_bp
     from app.routes.admin_plans import admin_plans_bp, plans_bp
     from app.routes.audit import audit_bp
     from app.routes.admin import admin_bp
@@ -62,6 +63,8 @@ def create_app():
         # module, so admin_api.py does not keep growing.
         admin_plans_bp,
         plans_bp,
+        # Email provider configuration, same /api/admin tier as plans.
+        admin_email_bp,
         audit_bp,
         admin_bp,
         content_bp,
