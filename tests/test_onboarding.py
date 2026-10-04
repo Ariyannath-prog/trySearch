@@ -156,11 +156,17 @@ class ApprovalGateTests(unittest.TestCase):
 
         from app.db import engine
         from app.models import users
+        now = datetime.utcnow()
         with engine.begin() as conn:
             cls.user = conn.execute(insert(users).values(
                 username='onboard_user', email='onboard@example.com',
                 password_hash=generate_password_hash('onboard-password-1'),
-                created_at=datetime.utcnow(),
+                created_at=now,
+                # Phase C gates the onboarding API on a confirmed address. These
+                # tests are about the approval gate, not the verification gate,
+                # so the account is verified; the verification gate itself is
+                # covered in tests/test_signup_verification.py.
+                email_verified_at=now,
             )).inserted_primary_key[0]
 
     def login(self, client):

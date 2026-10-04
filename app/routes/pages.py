@@ -30,10 +30,17 @@ from app import db
 from app.db import engine
 from app.models import contacts
 from app.utils import row_to_dict
+from app.accounts import is_verified
 from app.admin_auth import require_platform_admin_page
 from app.security import issue_token
 
 pages_bp = Blueprint('pages', __name__)
+
+# Shared chrome for the inline auth pages (/login, /register, /signup,
+# /verify-email). Kept as one constant so they cannot drift apart.
+_AUTH_PAGE_STYLE = (
+    '*{box-sizing:border-box}body{font-family:system-ui,sans-serif;min-height:100vh;margin:0;padding:clamp(1rem,5vw,2rem);display:grid;align-content:center;background:#0b1220;color:#eef3ff}form,.card{width:min(100%,27rem)}label{display:grid;gap:.4rem;margin:.8rem 0}input{padding:.7rem;width:100%;border-radius:8px;border:1px solid #333;background:#071018;color:#eef3ff;font-size:16px}button{margin-top:1rem;padding:.75rem 1rem;border-radius:8px;background:#ffba08;border:none;color:#061018;font-weight:700;cursor:pointer}button.ghost{background:transparent;border:1px solid #333;color:#eef3ff;font-weight:600}a{color:#6eaff0}.terms{display:flex;align-items:center;gap:.5rem;margin:1rem 0;font-size:14px}.terms input{width:auto;flex:none}.note{margin-top:1rem;font-size:14px;line-height:1.5}.err{color:#ffb3bf}.ok{color:#9ff0c4}h1{font-size:1.6rem;margin:0 0 .4rem}.lede{color:#9cb2d3;font-size:14px;line-height:1.6;margin:0 0 1rem}@media(max-width:400px){button{width:100%}}'
+)
 
 @pages_bp.route('/')
 def index():
@@ -175,7 +182,167 @@ def workspace_page():
 def onboarding_page():
     if not session.get('user_id'):
         return redirect('/login')
+    # An unconfirmed address cannot set up a project. The API enforces this too
+    # (routes/onboarding.py); this redirect just avoids showing a page whose
+    # every request would be refused.
+    if not is_verified(session['user_id']):
+        return redirect('/verify-email')
     return send_from_directory(BASE_DIR, 'onboarding.html')
+
+
+@pages_bp.route('/signup')
+def signup_page():
+    """Account creation. Posts to /api/signup, then waits on the inbox."""
+    csrf = issue_token()
+    html = """
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width,initial-scale=1'>
+        <title>Create your trySearch account</title>
+        <meta id='csrf' content='__CSRF_TOKEN__'>
+        <style>__STYLE__</style>
+      </head>
+      <body>
+        <form id='signup-form'>
+          <h1>Create your account</h1>
+          <p class='lede'>Confirm your email, then set up your first project.</p>
+          <label>Email<input name='email' type='email' autocomplete='email' required></label>
+          <label>Password<input name='password' type='password' autocomplete='new-password' required minlength='10'></label>
+          <label>Confirm password<input name='password_confirmation' type='password' autocomplete='new-password' required></label>
+          <div class='terms'>
+            <input id='terms' type='checkbox'>
+            <label for='terms' style='margin:0'>I accept the terms of service</label>
+          </div>
+          <button type='submit' id='submit'>Create account</button>
+          <p class='note'>Already have an account? <a href='/login'>Log in</a></p>
+          <p class='note' id='note'></p>
+        </form>
+        <script>
+          const CSRF=document.getElementById('csrf').content;
+          const form=document.getElementById('signup-form');
+          const note=document.getElementById('note');
+          const submit=document.getElementById('submit');
+          form.addEventListener('submit', async e=>{
+            e.preventDefault();
+            note.className='note'; note.textContent='Creating your account...';
+            submit.disabled=true;
+            const payload={
+              email: form.email.value,
+              password: form.password.value,
+              password_confirmation: form.password_confirmation.value,
+              terms_accepted: document.getElementById('terms').checked
+            };
+            try{
+              const res=await fetch('/api/signup',{method:'POST',credentials:'same-origin',
+                headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},
+                body:JSON.stringify(payload)});
+              const j=await res.json();
+              if(res.ok){
+                note.className='note ok';
+                note.textContent=j.message||'Check your email to confirm your address.';
+                setTimeout(()=>location.href='/verify-email',900);
+              } else {
+                note.className='note err';
+                note.textContent=j.error||'Could not create the account.';
+                submit.disabled=false;
+              }
+            }catch(err){
+              note.className='note err';
+              note.textContent='Network error. Please try again.';
+              submit.disabled=false;
+            }
+          });
+        </script>
+      </body>
+    </html>
+    """
+    return html.replace('__CSRF_TOKEN__', csrf).replace('__STYLE__', _AUTH_PAGE_STYLE)
+
+
+@pages_bp.route('/verify-email')
+def verify_email_page():
+    """Target of the emailed link, and the holding page after signup.
+
+    With ?token=... it spends the token and moves the user into onboarding.
+    Without one it explains what to do and offers a resend.
+    """
+    csrf = issue_token()
+    html = """
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width,initial-scale=1'>
+        <title>Confirm your email — trySearch</title>
+        <meta id='csrf' content='__CSRF_TOKEN__'>
+        <style>__STYLE__</style>
+      </head>
+      <body>
+        <div class='card'>
+          <h1 id='heading'>Confirm your email</h1>
+          <p class='lede' id='lede'>Checking your confirmation link...</p>
+          <div id='resend-box' style='display:none'>
+            <label>Email<input id='resend-email' type='email' autocomplete='email'></label>
+            <button type='button' id='resend'>Send a new link</button>
+          </div>
+          <p class='note' id='note'></p>
+          <p class='note'><a href='/login'>Back to log in</a></p>
+        </div>
+        <script>
+          const CSRF=document.getElementById('csrf').content;
+          const heading=document.getElementById('heading');
+          const lede=document.getElementById('lede');
+          const note=document.getElementById('note');
+          const resendBox=document.getElementById('resend-box');
+          const token=new URLSearchParams(location.search).get('token');
+
+          function offerResend(message){
+            heading.textContent='Confirm your email';
+            lede.textContent=message;
+            resendBox.style.display='block';
+          }
+
+          async function verify(){
+            try{
+              const res=await fetch('/api/verify-email',{method:'POST',credentials:'same-origin',
+                headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},
+                body:JSON.stringify({token:token})});
+              const j=await res.json();
+              if(res.ok){
+                heading.textContent='Email confirmed';
+                lede.textContent='Taking you to set up your first project...';
+                setTimeout(()=>location.href=(j.next||'/onboarding'),900);
+              } else {
+                offerResend(j.error||'That link did not work.');
+              }
+            }catch(err){
+              offerResend('Network error while confirming. Try sending a new link.');
+            }
+          }
+
+          document.getElementById('resend').addEventListener('click', async ()=>{
+            note.className='note'; note.textContent='Sending...';
+            try{
+              const res=await fetch('/api/resend-verification',{method:'POST',credentials:'same-origin',
+                headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},
+                body:JSON.stringify({email:document.getElementById('resend-email').value})});
+              const j=await res.json();
+              note.className=res.ok?'note ok':'note err';
+              note.textContent=(res.ok?j.message:j.error)||'';
+            }catch(err){
+              note.className='note err'; note.textContent='Network error. Please try again.';
+            }
+          });
+
+          if(token){ verify(); }
+          else{ offerResend('We sent you a confirmation link. Open it to finish setting up your account.'); }
+        </script>
+      </body>
+    </html>
+    """
+    return html.replace('__CSRF_TOKEN__', csrf).replace('__STYLE__', _AUTH_PAGE_STYLE)
 
 @pages_bp.route('/profile')
 def profile_page():
@@ -207,7 +374,7 @@ def login_page():
           <label><input type='checkbox' name='remember'> Remember me</label>
           <button type='submit'>Log in</button>
         </form>
-        <p>New? <a href='/register'>Create an account</a></p>
+        <p>New? <a href='/signup'>Create an account</a></p>
         <p id='note'></p>
         <script>
           const CSRF=document.getElementById('csrf').content;
@@ -222,7 +389,14 @@ def login_page():
             const res=await fetch('/api/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify(data)});
             const j=await res.json();
             const note=document.getElementById('note');
-            if(res.ok){ note.textContent='Logged in. Redirecting...'; setTimeout(()=>location.href='/analytics',400); } else { note.textContent = j.error || 'Login failed'; }
+            if(res.ok){
+              /* An unconfirmed address goes to confirmation, not the dashboard.
+                 Accounts that predate verification are backfilled as verified,
+                 so existing customers still land on /analytics. */
+              const next = j.email_verified === false ? '/verify-email' : '/analytics';
+              note.textContent='Logged in. Redirecting...';
+              setTimeout(()=>location.href=next,400);
+            } else { note.textContent = j.error || 'Login failed'; }
           });
         </script>
       </body>

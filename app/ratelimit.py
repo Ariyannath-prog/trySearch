@@ -33,11 +33,22 @@ from app.models import rate_limit_counters
 # 'login' counts FAILED attempts only (see peek/clear and app/auth.py). A
 # successful sign-in costs nothing, so a real person signing in repeatedly is never
 # locked out, while a password-guessing run - which produces only failures - is.
+#
+# Two buckets guard account creation, because one alone is bypassable:
+#   'signup'    is keyed per (caller, email) and stops one address being
+#               mail-bombed by repeated signups.
+#   'signup_ip' is keyed per caller only and caps how many accounts one source
+#               can create at all - without it, varying the email defeats the
+#               limit entirely. Set higher than 'signup' so a shared NAT is not
+#               punished for a handful of genuine sign-ups.
+# 'resend_verification' / 'resend_ip' split the same way.
 POLICIES = {
     'signup': (5, 3600),
+    'signup_ip': (15, 3600),
     'login': (10, 900),
     'email_verify': (10, 3600),
     'resend_verification': (3, 3600),
+    'resend_ip': (12, 3600),
     'password_reset': (5, 3600),
 }
 

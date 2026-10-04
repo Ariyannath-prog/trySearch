@@ -25,7 +25,9 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from app import accounts
 from app.db import engine
+from app.mailer import delivery_mode, send_verification_email
 from app.models import users
 from app.ratelimit import (
     RateLimitExceeded,
@@ -217,3 +219,266 @@ def analytics_user_id():
     if not user_id:
         return None, (jsonify({'error': 'Sign in to use AI Search Analytics.'}), 401)
     return user_id, None
+
+
+# --- Phase C: signup and email verification ---------------------------------
+# /api/register above is kept exactly as it was, for any existing caller. New
+# clients use /api/signup, which adds password confirmation, terms capture and a
+# verification email.
+
+
+def _signup_response_for(email):
+    """The response body for a signup attempt.
+
+    Identical whether or not the address was already registered. Returning
+    "that email is taken" here would turn signup into an account-existence
+    oracle; the person who genuinely owns the address learns the truth from
+    their inbox instead.
+    """
+    return {
+        'status': 'pending_verification',
+        'message': 'Check your email to confirm your address.',
+        'email': email,
+        'next': '/verify-email',
+    }
+
+
+@auth_bp.route('/api/signup', methods=['POST'])
+def api_signup():
+    """Create an account and send a verification email."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Invalid payload'}), 400
+
+    try:
+        email = accounts.normalise_email(data.get('email'))
+    except accounts.SignupError as error:
+        return jsonify({'error': error.message, 'field': error.field}), 400
+
+    identity = client_identity(request)
+    try:
+        # Per-source first: varying the email address must not defeat the limit.
+        enforce('signup_ip', identity)
+        enforce('signup', identity, subject=email)
+    except RateLimitExceeded as error:
+        return refusal_response(error)
+
+    try:
+        password = accounts.validate_password(
+            data.get('password'), data.get('password_confirmation'))
+        accounts.validate_terms(data.get('terms_accepted'))
+        username_base = accounts.candidate_username(email, data.get('username'))
+    except accounts.SignupError as error:
+        return jsonify({'error': error.message, 'field': error.field}), 400
+
+    # Refuse before creating anything if we cannot actually deliver the mail.
+    # Telling someone to check their inbox when no relay is configured would
+    # leave them permanently stuck on an unverifiable account.
+    if delivery_mode() == 'unconfigured':
+        return jsonify({
+            'error': 'Account creation is temporarily unavailable. Please try again later.',
+            'code': 'email_unconfigured',
+        }), 503
+
+    now = datetime.utcnow()
+    password_hash = generate_password_hash(password)
+    raw_token = None
+
+    with engine.begin() as conn:
+        existing = accounts.user_by_email(email, conn=conn)
+        if existing:
+            # Known address. Create nothing, reveal nothing. If it is still
+            # unverified, re-send so the legitimate owner can get in; if it is
+            # verified, send nothing at all.
+            if existing['email_verified_at'] is None and existing['is_active']:
+                raw_token, ttl = accounts.issue_token(
+                    existing['id'], ip=identity, now=now, conn=conn)
+                resend_email = existing['email']
+            else:
+                resend_email = None
+        else:
+            username = accounts.allocate_username(conn, username_base)
+            try:
+                user_id = conn.execute(insert(users).values(
+                    username=username, email=email, password_hash=password_hash,
+                    created_at=now, is_platform_admin=False, is_active=True,
+                    terms_accepted_at=now,
+                    terms_version=accounts.CURRENT_TERMS_VERSION,
+                )).inserted_primary_key[0]
+            except IntegrityError:
+                # Lost a race against a concurrent signup for the same address.
+                # Same opaque response as the duplicate path above.
+                return jsonify(_signup_response_for(email)), 202
+            raw_token, ttl = accounts.issue_token(
+                user_id, ip=identity, now=now, conn=conn)
+            resend_email = email
+
+    if raw_token and resend_email:
+        ok, _mode, _error = send_verification_email(
+            to=resend_email,
+            verify_url=accounts.verification_url(raw_token),
+            expires_hours=ttl,
+        )
+        if not ok:
+            # The account exists but the mail failed. Say so plainly rather than
+            # pointing the user at an inbox that will stay empty; /api/resend-verification
+            # lets them try again without creating a second account.
+            return jsonify({
+                'status': 'pending_verification',
+                'message': 'Account created, but the confirmation email could not be '
+                           'sent. Use the resend option in a moment.',
+                'email': email,
+                'next': '/verify-email',
+                'email_sent': False,
+            }), 202
+
+    return jsonify(_signup_response_for(email)), 202
+
+
+@auth_bp.route('/api/resend-verification', methods=['POST'])
+def api_resend_verification():
+    """Re-send the verification email.
+
+    Works for the signed-in user, or for an address supplied in the body so
+    someone who never got the first mail is not locked out by having no session.
+    The response never varies with whether the address exists.
+    """
+    data = request.get_json(silent=True) or {}
+    identity = client_identity(request)
+
+    email = None
+    user_id = session.get('user_id')
+    if user_id:
+        with engine.connect() as conn:
+            email = conn.execute(
+                select(users.c.email).where(users.c.id == user_id)
+            ).scalar_one_or_none()
+    if not email:
+        try:
+            email = accounts.normalise_email(data.get('email'))
+        except accounts.SignupError as error:
+            return jsonify({'error': error.message, 'field': error.field}), 400
+
+    try:
+        # Same two-bucket rule: cap the source as well as the address, so one
+        # caller cannot mail-bomb many different inboxes.
+        enforce('resend_ip', identity)
+        enforce('resend_verification', identity, subject=email.lower())
+    except RateLimitExceeded as error:
+        return refusal_response(error)
+
+    opaque = jsonify({
+        'status': 'sent',
+        'message': 'If that address needs confirming, a new link is on its way.',
+    })
+
+    if delivery_mode() == 'unconfigured':
+        return jsonify({
+            'error': 'Email delivery is not configured on this server.',
+            'code': 'email_unconfigured',
+        }), 503
+
+    user = accounts.user_by_email(email)
+    if not user or not user['is_active'] or user['email_verified_at'] is not None:
+        # Nothing to do. Same body and status as the success path.
+        return opaque, 202
+
+    raw_token, ttl = accounts.issue_token(user['id'], ip=identity)
+    send_verification_email(
+        to=user['email'],
+        verify_url=accounts.verification_url(raw_token),
+        expires_hours=ttl,
+    )
+    return opaque, 202
+
+
+@auth_bp.route('/api/verify-email', methods=['POST'])
+def api_verify_email():
+    """Spend a verification token.
+
+    On success the user is signed in, because requiring a separate login
+    immediately after proving control of the address adds friction without
+    adding security, and onboarding is the next step.
+    """
+    data = request.get_json(silent=True) or {}
+    token = data.get('token')
+
+    try:
+        enforce('email_verify', client_identity(request))
+    except RateLimitExceeded as error:
+        return refusal_response(error)
+
+    outcome, user_id = accounts.consume_token(token)
+
+    if outcome == accounts.VERIFY_INVALID:
+        return jsonify({
+            'error': 'That confirmation link is not valid.',
+            'code': outcome,
+        }), 400
+    if outcome == accounts.VERIFY_EXPIRED:
+        return jsonify({
+            'error': 'That confirmation link has expired. Request a new one.',
+            'code': outcome,
+            'can_resend': True,
+        }), 410
+    if outcome == accounts.VERIFY_USED:
+        return jsonify({
+            'error': 'That confirmation link has already been used. Request a new one.',
+            'code': outcome,
+            'can_resend': True,
+        }), 410
+
+    with engine.connect() as conn:
+        user = conn.execute(
+            select(users.c.id, users.c.username, users.c.is_active)
+            .where(users.c.id == user_id)
+        ).mappings().first()
+
+    if not user or not user['is_active']:
+        return jsonify({
+            'error': 'This account is not available. Contact support.',
+            'code': 'account_inactive',
+        }), 403
+
+    # Sign in and start a fresh session, with a new CSRF token for the new
+    # privilege level - the same rule /api/login follows.
+    session.clear()
+    session['user_id'] = user['id']
+    session['username'] = user['username']
+    rotate_token()
+
+    with engine.begin() as conn:
+        conn.execute(update(users).where(users.c.id == user['id'])
+                     .values(last_login_at=datetime.utcnow()))
+
+    return jsonify({
+        'status': outcome,
+        'message': ('Email confirmed.' if outcome == accounts.VERIFY_OK
+                    else 'This email was already confirmed.'),
+        'email_verified': True,
+        # Verification leads into onboarding, never straight to the dashboard:
+        # a workspace does not exist yet, so /analytics would have nothing to show.
+        'next': '/onboarding',
+    })
+
+
+@auth_bp.route('/api/verification-status', methods=['GET'])
+def api_verification_status():
+    """Whether the signed-in user still needs to confirm their address."""
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Authentication required.'}), 401
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(users.c.email, users.c.email_verified_at)
+            .where(users.c.id == user_id)
+        ).mappings().first()
+    if not row:
+        session.clear()
+        return jsonify({'error': 'Authentication required.'}), 401
+    verified = row['email_verified_at'] is not None
+    return jsonify({
+        'email': row['email'],
+        'email_verified': verified,
+        'next': '/onboarding' if verified else '/verify-email',
+    })

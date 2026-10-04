@@ -23,16 +23,39 @@ from app.models import (
     workspaces,
 )
 from app.scanning import credential_for_engine
+from app.accounts import is_verified
 from app.tenancy import current_user_id, default_org_for_user, require_workspace
 from app.utils import normalise_domain, row_to_dict
 
 onboarding_bp = Blueprint('onboarding', __name__)
 
 
+
+def require_verified_user():
+    """Authenticated AND email-confirmed, or a response to return directly.
+
+    The page redirect in routes/pages.py is a convenience; this is the
+    enforcement. Onboarding creates a workspace and can start a paid scan, so an
+    unconfirmed address must not reach it even by calling the API directly.
+
+    Accounts that predate email verification are backfilled as verified by the
+    Phase C migration, so this gate never locks out an existing customer.
+    """
+    user_id, error = current_user_id()
+    if error:
+        return None, error
+    if not is_verified(user_id):
+        return None, (jsonify({
+            'error': 'Confirm your email address before setting up a project.',
+            'code': 'email_unverified',
+            'next': '/verify-email',
+        }), 403)
+    return user_id, None
+
 @onboarding_bp.route('/api/onboarding/preview', methods=['POST'])
 def preview_onboarding_profile():
     """Generate a profile for review. Writes nothing, scans nothing."""
-    user_id, error = current_user_id()
+    user_id, error = require_verified_user()
     if error:
         return error
 
@@ -73,7 +96,7 @@ def preview_onboarding_profile():
 @onboarding_bp.route('/api/onboarding/approve', methods=['POST'])
 def approve_onboarding_profile():
     """Persist the reviewed profile. Still does not scan."""
-    user_id, error = current_user_id()
+    user_id, error = require_verified_user()
     if error:
         return error
 
