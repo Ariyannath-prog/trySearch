@@ -40,13 +40,28 @@ MAX_PASSWORD_LENGTH = 200
 MAX_EMAIL_LENGTH = 254
 USERNAME_MAX_LENGTH = 150
 
-# The terms revision a signup is recorded against. Bump when the terms change, so
-# `users.terms_version` says which text a given account actually accepted.
-CURRENT_TERMS_VERSION = '2026-10-01'
+# The terms revision a signup is recorded against, imported from the single source
+# of truth in app/terms.py rather than duplicated. A second constant here would be
+# the thing that drifts, leaving accounts recorded against a version of the text
+# nobody can produce.
+from app.terms import VERSION as CURRENT_TERMS_VERSION  # noqa: E402
 
 # Deliberately permissive. Real deliverability is proven by the verification mail
 # itself, so an over-strict regex here only rejects valid unusual addresses.
 EMAIL_PATTERN = re.compile(r'^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$')
+
+
+def reset_ttl_hours():
+    """Password-reset links live hours, not days.
+
+    Shorter than verification on purpose: a reset link is a live credential for
+    changing a password, whereas a verification link only proves an address works.
+    """
+    try:
+        value = int(os.environ.get('PASSWORD_RESET_TTL_HOURS', '2'))
+    except (TypeError, ValueError):
+        value = 2
+    return max(1, min(value, 24))
 
 
 def verification_ttl_hours():
@@ -75,6 +90,11 @@ def normalise_email(raw):
     if not EMAIL_PATTERN.match(email):
         raise SignupError('Enter a valid email address.', 'email')
     return email
+
+
+def validate_new_password(password, confirmation):
+    """Same rules as signup, so a reset cannot weaken an account's password."""
+    return validate_password(password, confirmation)
 
 
 def validate_password(password, confirmation):
@@ -264,3 +284,97 @@ def verification_url(raw_token):
     from urllib.parse import quote
 
     return f'{app_base_url()}/verify-email?token={quote(raw_token, safe="")}'
+
+
+# --- password reset ---------------------------------------------------------
+
+RESET_OK = 'reset'
+RESET_INVALID = 'invalid'
+RESET_EXPIRED = 'expired'
+RESET_USED = 'used'
+
+
+def consume_reset_token(raw_token, *, now=None):
+    """Spend a password-reset token once. Returns (outcome, user_id_or_None).
+
+    Mirrors consume_token(): the unused-and-unexpired predicate travels with the
+    UPDATE, so the database decides spendability and two concurrent clicks cannot
+    both succeed. Unlike verification there is no "already done" success case -
+    a spent reset link is always a failure, because the holder cannot know
+    whether the previous use was theirs.
+    """
+    now = now or datetime.utcnow()
+    if not raw_token or not isinstance(raw_token, str):
+        return RESET_INVALID, None
+
+    token_hash = hash_token(raw_token.strip())
+
+    with engine.begin() as conn:
+        row = conn.execute(
+            select(
+                email_verification_tokens.c.id,
+                email_verification_tokens.c.user_id,
+                email_verification_tokens.c.used_at,
+                email_verification_tokens.c.expires_at,
+            ).where(
+                (email_verification_tokens.c.token_hash == token_hash)
+                & (email_verification_tokens.c.purpose == PURPOSE_RESET)
+            )
+        ).mappings().first()
+
+        if not row:
+            return RESET_INVALID, None
+        if row['used_at'] is not None:
+            return RESET_USED, row['user_id']
+        if row['expires_at'] <= now:
+            return RESET_EXPIRED, row['user_id']
+
+        spent = conn.execute(
+            update(email_verification_tokens)
+            .where(
+                (email_verification_tokens.c.id == row['id'])
+                & (email_verification_tokens.c.used_at.is_(None))
+                & (email_verification_tokens.c.expires_at > now)
+            )
+            .values(used_at=now)
+        )
+        if spent.rowcount != 1:
+            return RESET_USED, row['user_id']
+        return RESET_OK, row['user_id']
+
+
+def apply_new_password(user_id, password_hash, *, now=None):
+    """Store a new password hash and invalidate outstanding reset links.
+
+    Also marks the address verified if it was not already: completing a reset
+    proves control of the inbox, which is the same bar verification sets. This is
+    what lets an account that predates verification recover without a second,
+    separate confirmation step.
+    """
+    now = now or datetime.utcnow()
+    with engine.begin() as conn:
+        conn.execute(
+            update(users).where(users.c.id == user_id).values(password_hash=password_hash)
+        )
+        conn.execute(
+            update(users)
+            .where((users.c.id == user_id) & (users.c.email_verified_at.is_(None)))
+            .values(email_verified_at=now)
+        )
+        # Any other live reset link for this account is now void.
+        conn.execute(
+            update(email_verification_tokens)
+            .where(
+                (email_verification_tokens.c.user_id == user_id)
+                & (email_verification_tokens.c.purpose == PURPOSE_RESET)
+                & (email_verification_tokens.c.used_at.is_(None))
+            )
+            .values(used_at=now)
+        )
+
+
+def reset_url(raw_token):
+    from app.mailer import app_base_url
+    from urllib.parse import quote
+
+    return f'{app_base_url()}/reset-password?token={quote(raw_token, safe="")}'

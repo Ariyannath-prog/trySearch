@@ -27,7 +27,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from app import accounts
 from app.db import engine
-from app.mailer import delivery_mode, send_verification_email
+from app import mailer
+from app.mailer import send_password_reset_email, send_verification_email
 from app.models import users
 from app.ratelimit import (
     RateLimitExceeded,
@@ -274,7 +275,7 @@ def api_signup():
     # Refuse before creating anything if we cannot actually deliver the mail.
     # Telling someone to check their inbox when no relay is configured would
     # leave them permanently stuck on an unverifiable account.
-    if delivery_mode() == 'unconfigured':
+    if mailer.delivery_mode() == mailer.MODE_UNCONFIGURED:
         return jsonify({
             'error': 'Account creation is temporarily unavailable. Please try again later.',
             'code': 'email_unconfigured',
@@ -372,7 +373,7 @@ def api_resend_verification():
         'message': 'If that address needs confirming, a new link is on its way.',
     })
 
-    if delivery_mode() == 'unconfigured':
+    if mailer.delivery_mode() == mailer.MODE_UNCONFIGURED:
         return jsonify({
             'error': 'Email delivery is not configured on this server.',
             'code': 'email_unconfigured',
@@ -481,4 +482,114 @@ def api_verification_status():
         'email': row['email'],
         'email_verified': verified,
         'next': '/onboarding' if verified else '/verify-email',
+    })
+
+
+# --- password reset ---------------------------------------------------------
+# Reuses the email_verification_tokens table via purpose='password_reset' and the
+# existing rate-limit policies, so there is no second token or throttle system.
+
+
+@auth_bp.route('/api/forgot-password', methods=['POST'])
+def api_forgot_password():
+    """Start a password reset.
+
+    The response never varies with whether the address exists, is active or is
+    verified. A "no such account" reply here would turn this endpoint into a
+    membership oracle for anyone with a list of addresses.
+    """
+    data = request.get_json(silent=True) or {}
+    identity = client_identity(request)
+
+    try:
+        email = accounts.normalise_email(data.get('email'))
+    except accounts.SignupError as error:
+        # Even a malformed address gets the neutral reply, so probing cannot
+        # distinguish "invalid" from "unknown".
+        return jsonify({
+            'status': 'sent',
+            'message': 'If that address has an account, a reset link is on its way.',
+        }), 202
+
+    try:
+        # Per-source first, so varying the address does not defeat the limit.
+        enforce('password_reset_ip', identity)
+        enforce('password_reset', identity, subject=email)
+    except RateLimitExceeded as error:
+        return refusal_response(error)
+
+    opaque = jsonify({
+        'status': 'sent',
+        'message': 'If that address has an account, a reset link is on its way.',
+    })
+
+    if mailer.delivery_mode() == mailer.MODE_UNCONFIGURED:
+        return jsonify({
+            'error': 'Email delivery is not configured on this server.',
+            'code': 'email_unconfigured',
+        }), 503
+
+    user = accounts.user_by_email(email)
+    if not user or not user['is_active']:
+        return opaque, 202
+
+    raw_token, ttl = accounts.issue_token(
+        user['id'], purpose=accounts.PURPOSE_RESET, ip=identity,
+        ttl_hours=accounts.reset_ttl_hours())
+    send_password_reset_email(
+        to=user['email'], reset_url=accounts.reset_url(raw_token), expires_hours=ttl)
+    return opaque, 202
+
+
+@auth_bp.route('/api/reset-password', methods=['POST'])
+def api_reset_password():
+    """Finish a password reset.
+
+    Deliberately does not sign the user in. Proving control of the inbox is
+    enough to set a password, but making them use it once confirms they have
+    recorded it, and it keeps session creation on one path.
+    """
+    data = request.get_json(silent=True) or {}
+
+    try:
+        enforce('password_reset', client_identity(request), subject='__consume__')
+    except RateLimitExceeded as error:
+        return refusal_response(error)
+
+    try:
+        password = accounts.validate_new_password(
+            data.get('password'), data.get('password_confirmation'))
+    except accounts.SignupError as error:
+        return jsonify({'error': error.message, 'field': error.field}), 400
+
+    outcome, user_id = accounts.consume_reset_token(data.get('token'))
+
+    if outcome == accounts.RESET_INVALID:
+        return jsonify({'error': 'That reset link is not valid.',
+                        'code': outcome}), 400
+    if outcome == accounts.RESET_EXPIRED:
+        return jsonify({'error': 'That reset link has expired. Request a new one.',
+                        'code': outcome, 'can_retry': True}), 410
+    if outcome == accounts.RESET_USED:
+        return jsonify({'error': 'That reset link has already been used. Request a '
+                                 'new one.', 'code': outcome, 'can_retry': True}), 410
+
+    with engine.connect() as conn:
+        user = conn.execute(
+            select(users.c.id, users.c.is_active).where(users.c.id == user_id)
+        ).mappings().first()
+    if not user or not user['is_active']:
+        return jsonify({'error': 'This account is not available. Contact support.',
+                        'code': 'account_inactive'}), 403
+
+    accounts.apply_new_password(user_id, generate_password_hash(password))
+
+    # Drop any session this request happens to carry, so a reset performed from a
+    # shared browser does not leave someone else signed in as this account.
+    session.clear()
+
+    return jsonify({
+        'status': accounts.RESET_OK,
+        'message': 'Your password has been changed. Sign in with it to continue.',
+        'next': '/login',
     })

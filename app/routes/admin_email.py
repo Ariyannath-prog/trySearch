@@ -50,6 +50,12 @@ def get_email_settings():
         'settings': settings,
         'providers': email_settings.provider_catalog(),
         'security_options': list(email_settings.SECURITY_OPTIONS),
+        'delivery_methods': [
+            {'key': email_settings.DELIVERY_SYSTEM,
+             'label': 'System mail (local MTA)'},
+            {'key': email_settings.DELIVERY_SMTP,
+             'label': 'External SMTP'},
+        ],
         # Which configuration would actually be used for the next send, so an
         # admin can see when stale environment variables are still winning.
         'status': mailer.mail_status(),

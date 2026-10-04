@@ -3,6 +3,7 @@
 from flask import Blueprint
 from datetime import date, datetime, timedelta
 from flask import Flask, jsonify, request, send_from_directory, abort, session, redirect
+from markupsafe import escape
 from sqlalchemy import (
     create_engine,
     MetaData,
@@ -30,6 +31,7 @@ from app import db
 from app.db import engine
 from app.models import contacts
 from app.utils import row_to_dict
+from app import terms as terms_doc
 from app.accounts import is_verified
 from app.admin_auth import require_platform_admin_page
 from app.security import issue_token
@@ -213,7 +215,8 @@ def signup_page():
           <label>Confirm password<input name='password_confirmation' type='password' autocomplete='new-password' required></label>
           <div class='terms'>
             <input id='terms' type='checkbox'>
-            <label for='terms' style='margin:0'>I accept the terms of service</label>
+            <label for='terms' style='margin:0'>I accept the
+              <a href='/terms' target='_blank' rel='noopener'>terms of service</a></label>
           </div>
           <button type='submit' id='submit'>Create account</button>
           <p class='note'>Already have an account? <a href='/login'>Log in</a></p>
@@ -344,6 +347,174 @@ def verify_email_page():
     """
     return html.replace('__CSRF_TOKEN__', csrf).replace('__STYLE__', _AUTH_PAGE_STYLE)
 
+
+@pages_bp.route('/terms')
+def terms_page():
+    """Terms of service.
+
+    Public and unauthenticated: it has to be readable from the signup form before
+    an account exists. The version shown is app/terms.VERSION, the same constant
+    recorded on users.terms_version at signup.
+    """
+    sections = ''.join(
+        '<section><h2>{heading}</h2>{paragraphs}</section>'.format(
+            heading=escape(heading),
+            paragraphs=''.join(f'<p>{escape(text)}</p>' for text in paragraphs),
+        )
+        for heading, paragraphs in terms_doc.SECTIONS
+    )
+    html = """
+    <!doctype html>
+    <html lang='en'>
+      <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width,initial-scale=1'>
+        <title>Terms of Service — trySearch</title>
+        <style>
+          *{box-sizing:border-box}
+          body{font-family:system-ui,sans-serif;margin:0;padding:clamp(1.25rem,5vw,3rem);
+               background:#0b1220;color:#eef3ff;line-height:1.7}
+          main{max-width:46rem;margin:0 auto}
+          h1{font-size:clamp(1.6rem,4vw,2.1rem);margin:0 0 .3rem}
+          .meta{color:#9cb2d3;font-size:14px;margin:0 0 2rem}
+          h2{font-size:1.05rem;margin:2rem 0 .5rem;color:#ffba08}
+          p{margin:.6rem 0;color:#dce6f7}
+          a{color:#6eaff0}
+          footer{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid #243049;
+                 color:#9cb2d3;font-size:14px}
+        </style>
+      </head>
+      <body>
+        <main>
+          <h1>Terms of Service</h1>
+          <p class='meta'>Version __VERSION__ &middot; effective __EFFECTIVE__</p>
+          __SECTIONS__
+          <footer>
+            <p>Questions: <a href='mailto:__CONTACT__'>__CONTACT__</a></p>
+            <p><a href='/signup'>Back to sign up</a> &middot; <a href='/'>Home</a></p>
+          </footer>
+        </main>
+      </body>
+    </html>
+    """
+    return (html
+            .replace('__VERSION__', escape(terms_doc.VERSION))
+            .replace('__EFFECTIVE__', escape(terms_doc.EFFECTIVE_DATE))
+            .replace('__CONTACT__', escape(terms_doc.CONTACT_EMAIL))
+            .replace('__SECTIONS__', sections))
+
+
+@pages_bp.route('/forgot-password')
+def forgot_password_page():
+    """Request a reset link. Never confirms whether the address exists."""
+    csrf = issue_token()
+    html = """
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width,initial-scale=1'>
+        <title>Reset your password — trySearch</title>
+        <meta id='csrf' content='__CSRF_TOKEN__'>
+        <style>__STYLE__</style>
+      </head>
+      <body>
+        <form id='forgot-form'>
+          <h1>Reset your password</h1>
+          <p class='lede'>Enter your email address and we will send you a link.</p>
+          <label>Email<input name='email' type='email' autocomplete='email' required></label>
+          <button type='submit' id='submit'>Send reset link</button>
+          <p class='note'><a href='/login'>Back to log in</a></p>
+          <p class='note' id='note'></p>
+        </form>
+        <script>
+          const CSRF=document.getElementById('csrf').content;
+          const form=document.getElementById('forgot-form');
+          const note=document.getElementById('note');
+          const submit=document.getElementById('submit');
+          form.addEventListener('submit', async e=>{
+            e.preventDefault();
+            note.className='note'; note.textContent='Sending...'; submit.disabled=true;
+            try{
+              const res=await fetch('/api/forgot-password',{method:'POST',credentials:'same-origin',
+                headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},
+                body:JSON.stringify({email:form.email.value})});
+              const j=await res.json();
+              note.className=res.ok?'note ok':'note err';
+              note.textContent=(res.ok?j.message:j.error)||'';
+            }catch(err){
+              note.className='note err'; note.textContent='Network error. Please try again.';
+            }finally{ submit.disabled=false; }
+          });
+        </script>
+      </body>
+    </html>
+    """
+    return html.replace('__CSRF_TOKEN__', csrf).replace('__STYLE__', _AUTH_PAGE_STYLE)
+
+
+@pages_bp.route('/reset-password')
+def reset_password_page():
+    """Target of the emailed reset link."""
+    csrf = issue_token()
+    html = """
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset='utf-8'>
+        <meta name='viewport' content='width=device-width,initial-scale=1'>
+        <title>Choose a new password — trySearch</title>
+        <meta id='csrf' content='__CSRF_TOKEN__'>
+        <style>__STYLE__</style>
+      </head>
+      <body>
+        <form id='reset-form'>
+          <h1>Choose a new password</h1>
+          <p class='lede' id='lede'>Pick something at least 10 characters long.</p>
+          <label>New password<input name='password' type='password' autocomplete='new-password' required minlength='10'></label>
+          <label>Confirm password<input name='password_confirmation' type='password' autocomplete='new-password' required></label>
+          <button type='submit' id='submit'>Change password</button>
+          <p class='note'><a href='/forgot-password'>Request a new link</a></p>
+          <p class='note' id='note'></p>
+        </form>
+        <script>
+          const CSRF=document.getElementById('csrf').content;
+          const form=document.getElementById('reset-form');
+          const note=document.getElementById('note');
+          const submit=document.getElementById('submit');
+          const token=new URLSearchParams(location.search).get('token');
+          if(!token){
+            note.className='note err';
+            note.textContent='This link is missing its token. Request a new one.';
+            submit.disabled=true;
+          }
+          form.addEventListener('submit', async e=>{
+            e.preventDefault();
+            note.className='note'; note.textContent='Saving...'; submit.disabled=true;
+            try{
+              const res=await fetch('/api/reset-password',{method:'POST',credentials:'same-origin',
+                headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},
+                body:JSON.stringify({token:token,password:form.password.value,
+                                     password_confirmation:form.password_confirmation.value})});
+              const j=await res.json();
+              if(res.ok){
+                note.className='note ok'; note.textContent=j.message||'Password changed.';
+                setTimeout(()=>location.href=(j.next||'/login'),1200);
+              } else {
+                note.className='note err'; note.textContent=j.error||'Could not change the password.';
+                submit.disabled=false;
+              }
+            }catch(err){
+              note.className='note err'; note.textContent='Network error. Please try again.';
+              submit.disabled=false;
+            }
+          });
+        </script>
+      </body>
+    </html>
+    """
+    return html.replace('__CSRF_TOKEN__', csrf).replace('__STYLE__', _AUTH_PAGE_STYLE)
+
 @pages_bp.route('/profile')
 def profile_page():
     if not session.get('user_id'):
@@ -375,6 +546,7 @@ def login_page():
           <button type='submit'>Log in</button>
         </form>
         <p>New? <a href='/signup'>Create an account</a></p>
+        <p><a href='/forgot-password'>Forgot your password?</a></p>
         <p id='note'></p>
         <script>
           const CSRF=document.getElementById('csrf').content;

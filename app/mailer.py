@@ -359,3 +359,38 @@ def send_test_email(*, to, requested_by=None, config=None):
     subject, text_body, html_body = test_message(requested_by=requested_by)
     return send(to=to, subject=subject, text_body=text_body,
                 html_body=html_body, config=config)
+
+
+def password_reset_message(*, reset_url, expires_hours):
+    subject = 'Reset your trySearch password'
+    text_body = (
+        'Someone asked to reset the password for this trySearch account.\n\n'
+        'If it was you, use this link to choose a new password:\n\n'
+        f'{reset_url}\n\n'
+        f'The link can be used once and expires in {expires_hours} hours.\n\n'
+        'If it was not you, you can ignore this message - your password has not '
+        'been changed.\n'
+    )
+    html_body = (
+        '<!doctype html><html><body style="font-family:system-ui,sans-serif;'
+        'line-height:1.6;color:#15121b">'
+        '<h2 style="margin:0 0 12px">Reset your password</h2>'
+        '<p>Someone asked to reset the password for this trySearch account.</p>'
+        f'<p><a href="{reset_url}" style="display:inline-block;padding:11px 18px;'
+        'background:#ed3b78;color:#fff;border-radius:8px;text-decoration:none;'
+        'font-weight:700">Choose a new password</a></p>'
+        f'<p style="color:#6b6475;font-size:13px">The link can be used once and '
+        f'expires in {expires_hours} hours.</p>'
+        f'<p style="color:#6b6475;font-size:13px">If the button does not work, paste '
+        f'this into your browser:<br><span>{reset_url}</span></p>'
+        '<p style="color:#6b6475;font-size:13px">If it was not you, ignore this '
+        'message - your password has not been changed.</p>'
+        '</body></html>'
+    )
+    return subject, text_body, html_body
+
+
+def send_password_reset_email(*, to, reset_url, expires_hours):
+    subject, text_body, html_body = password_reset_message(
+        reset_url=reset_url, expires_hours=expires_hours)
+    return send(to=to, subject=subject, text_body=text_body, html_body=html_body)

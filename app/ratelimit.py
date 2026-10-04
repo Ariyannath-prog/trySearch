@@ -50,6 +50,7 @@ POLICIES = {
     'resend_verification': (3, 3600),
     'resend_ip': (12, 3600),
     'password_reset': (5, 3600),
+    'password_reset_ip': (12, 3600),
 }
 
 # Windows older than this are dead weight. Pruned by the CLI worker.

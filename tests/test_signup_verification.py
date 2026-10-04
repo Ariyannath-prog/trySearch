@@ -684,6 +684,25 @@ class SecuritySurfaceTests(MailCaptureTestCase):
 
 class MailerConfigurationTests(unittest.TestCase):
 
+    def setUp(self):
+        """Email configuration is global state, so assert on a known baseline.
+
+        Another test module can legitimately save an enabled provider; depending
+        on the order it ran in would make this test flap rather than fail
+        honestly.
+        """
+        from app import email_settings
+        from app.models import system_settings
+
+        with engine.begin() as conn:
+            conn.execute(delete(system_settings).where(
+                system_settings.c.key.like(email_settings.PREFIX + '%')))
+        self._smtp_host = os.environ.pop('SMTP_HOST', None)
+
+    def tearDown(self):
+        if self._smtp_host is not None:
+            os.environ['SMTP_HOST'] = self._smtp_host
+
     def test_development_without_smtp_uses_console_mode(self):
         self.assertEqual(mailer.delivery_mode(), mailer.MODE_CONSOLE)
 

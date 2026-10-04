@@ -194,6 +194,10 @@ class SecretHandlingTests(unittest.TestCase):
     def setUp(self):
         wipe_email_settings()
 
+    def tearDown(self):
+        """Email settings are global; do not leak them to other modules."""
+        wipe_email_settings()
+
     def save(self, client, **overrides):
         return client.put('/api/admin/email-settings', json=valid_payload(**overrides))
 
@@ -306,6 +310,10 @@ class ValidationTests(unittest.TestCase):
     def setUp(self):
         wipe_email_settings()
 
+    def tearDown(self):
+        """Email settings are global; do not leak them to other modules."""
+        wipe_email_settings()
+
     def put(self, payload):
         with server_pg.app.test_client() as client:
             login(client, 'email_valid_admin')
@@ -380,6 +388,10 @@ class SystemMailTests(unittest.TestCase):
     def setUp(self):
         wipe_email_settings()
 
+    def tearDown(self):
+        """Email settings are global; do not leak them to other modules."""
+        wipe_email_settings()
+
     def test_system_mail_saves_without_smtp_credentials(self):
         with server_pg.app.test_client() as client:
             login(client, 'email_system_admin')
@@ -432,6 +444,10 @@ class TestEmailBehaviourTests(unittest.TestCase):
         mailer.send = capture
 
     def tearDown(self):
+        """Email settings are global; do not leak them to other modules."""
+        wipe_email_settings()
+
+    def tearDown(self):
         mailer.send = self._original
 
     def test_saving_settings_never_sends_an_email(self):
@@ -480,6 +496,10 @@ class CentralisedServiceTests(unittest.TestCase):
         make_user('email_central_admin', platform_admin=True)
 
     def setUp(self):
+        wipe_email_settings()
+
+    def tearDown(self):
+        """Email settings are global; do not leak them to other modules."""
         wipe_email_settings()
 
     def test_verification_email_uses_the_central_send(self):
@@ -602,6 +622,10 @@ class ConnectionTestTests(unittest.TestCase):
         make_user('email_conn_admin', platform_admin=True)
 
     def setUp(self):
+        wipe_email_settings()
+
+    def tearDown(self):
+        """Email settings are global; do not leak them to other modules."""
         wipe_email_settings()
 
     def test_testing_with_nothing_configured_reports_cleanly(self):

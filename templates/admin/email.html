@@ -66,7 +66,13 @@
   <p class="hint">Choosing a provider fills in its usual host, port and security.
     Every field stays editable.</p>
   <div class="form-grid">
-    <div class="field span2">
+    <div class="field">
+      <label for="f_delivery">Delivery method</label>
+      <select id="f_delivery"></select>
+      <span class="note">System mail hands off to this server's own MTA. External
+        SMTP connects to a relay.</span>
+    </div>
+    <div class="field">
       <label for="f_provider">Provider</label>
       <select id="f_provider"></select>
       <span class="note" id="providerHint"></span>
@@ -194,6 +200,7 @@
   const $ = (id) => document.getElementById(id);
 
   let providers = [];
+  let deliveryMethods = [];
   let settings = null;
 
   function show(el, message, cls){
@@ -217,6 +224,7 @@
     statusGrid.innerHTML = [
       ['Mode', pill(status.mode, modeCls)],
       ['Configuration source', esc(status.source || 'none')],
+      ['Delivery method', esc(status.transport || '—')],
       ['Provider', esc(status.provider || '—')],
       ['Host', esc(status.host || '—')],
       ['Port', esc(status.port ?? '—')],
@@ -229,11 +237,22 @@
     `).join('');
   }
 
+  /* The delivery method is the primary choice; the provider list is filtered to
+     the presets valid for it, so the two can never be saved in disagreement. */
+  function renderProviderOptions(){
+    const method = $('f_delivery').value;
+    const valid = providers.filter(p => p.transport === method);
+    const current = providerSel.value;
+    providerSel.innerHTML = valid
+      .map(p => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('');
+    if(valid.some(p => p.key === current)) providerSel.value = current;
+  }
+
   function applyTransport(){
-    const provider = providerByKey(providerSel.value);
-    const isSystem = provider && provider.transport === 'system';
+    const isSystem = $('f_delivery').value === 'system';
     smtpPanel.style.display = isSystem ? 'none' : 'block';
     systemWarn.style.display = isSystem ? 'block' : 'none';
+    const provider = providerByKey(providerSel.value);
     providerHint.textContent = provider ? provider.hint : '';
   }
 
@@ -251,7 +270,9 @@
   }
 
   function fillForm(){
-    providerSel.value = settings.provider || (providers[0] && providers[0].key) || '';
+    $('f_delivery').value = settings.delivery_method || 'smtp';
+    renderProviderOptions();
+    providerSel.value = settings.provider || providerSel.value || '';
     $('f_host').value = settings.host || '';
     $('f_port').value = settings.port ?? '';
     securitySel.value = settings.security || 'starttls';
@@ -272,6 +293,7 @@
 
   function readForm(){
     const body = {
+      delivery_method: $('f_delivery').value,
       provider: providerSel.value,
       enabled: $('f_enabled').value === 'true',
       from_name: $('f_from_name').value.trim(),
@@ -296,9 +318,10 @@
       const data = await res.json();
       if(!res.ok) throw new Error(data.error || 'Failed to load email settings.');
       providers = data.providers || [];
+      deliveryMethods = data.delivery_methods || [];
       settings = data.settings || {};
-      providerSel.innerHTML = providers
-        .map(p => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('');
+      $('f_delivery').innerHTML = deliveryMethods
+        .map(m => `<option value="${esc(m.key)}">${esc(m.label)}</option>`).join('');
       securitySel.innerHTML = (data.security_options || [])
         .map(v => `<option value="${esc(v)}">${esc(
           v === 'starttls' ? 'STARTTLS' : v === 'ssl' ? 'SSL/TLS' : 'None')}</option>`).join('');
@@ -377,6 +400,10 @@
     }
   }
 
+  $('f_delivery').addEventListener('change', () => {
+    renderProviderOptions();
+    applyPreset();
+  });
   providerSel.addEventListener('change', applyPreset);
   $('saveBtn').addEventListener('click', save);
   $('reloadBtn').addEventListener('click', load);

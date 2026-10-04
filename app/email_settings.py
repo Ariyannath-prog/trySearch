@@ -29,6 +29,7 @@ from app.provider_credentials import encrypt_secret, decrypt_secret, secret_hint
 PREFIX = 'email.'
 
 KEY_ENABLED = PREFIX + 'enabled'
+KEY_DELIVERY = PREFIX + 'delivery_method'
 KEY_PROVIDER = PREFIX + 'provider'
 KEY_HOST = PREFIX + 'smtp_host'
 KEY_PORT = PREFIX + 'smtp_port'
@@ -40,6 +41,13 @@ KEY_FROM_EMAIL = PREFIX + 'from_email'
 KEY_REPLY_TO = PREFIX + 'reply_to'
 KEY_UPDATED_BY = PREFIX + 'updated_by'
 KEY_UPDATED_AT = PREFIX + 'updated_at'
+
+# Delivery method is the transport decision; provider is the preset within it.
+# Kept as its own stored field rather than inferred from the provider, so the
+# admin's intent survives a later change to the catalog.
+DELIVERY_SYSTEM = 'system'
+DELIVERY_SMTP = 'smtp'
+DELIVERY_METHODS = (DELIVERY_SYSTEM, DELIVERY_SMTP)
 
 SECURITY_NONE = 'none'
 SECURITY_STARTTLS = 'starttls'
@@ -185,10 +193,16 @@ def raw_settings(conn=None):
         except Exception:  # noqa: BLE001 - a bad key must not leak a stack trace
             password = None
 
+    delivery = stored.get(KEY_DELIVERY)
+    if delivery not in DELIVERY_METHODS:
+        # Pre-existing rows saved before this field: derive it from the provider.
+        delivery = PROVIDERS_BY_KEY.get(provider, {}).get('transport', DELIVERY_SMTP)
+
     return {
         'enabled': stored.get(KEY_ENABLED) == 'true',
+        'delivery_method': delivery,
         'provider': provider,
-        'transport': PROVIDERS_BY_KEY.get(provider, {}).get('transport', 'smtp'),
+        'transport': delivery,
         'host': stored.get(KEY_HOST) or '',
         'port': port,
         'security': stored.get(KEY_SECURITY) or SECURITY_STARTTLS,
@@ -214,9 +228,14 @@ def public_settings(conn=None):
     except (TypeError, ValueError):
         port = None
 
+    delivery = stored.get(KEY_DELIVERY)
+    if delivery not in DELIVERY_METHODS:
+        delivery = PROVIDERS_BY_KEY.get(provider, {}).get('transport', DELIVERY_SMTP)
+
     return {
         'configured': bool(stored),
         'enabled': stored.get(KEY_ENABLED) == 'true',
+        'delivery_method': delivery,
         'provider': provider,
         'host': stored.get(KEY_HOST) or '',
         'port': port,
@@ -278,7 +297,21 @@ def validate(payload, *, existing=None):
         raise EmailSettingsError(
             f'Choose one of: {", ".join(PROVIDER_KEYS)}.', 'provider')
     preset = PROVIDERS_BY_KEY[provider]
-    transport = preset['transport']
+
+    # Delivery method may be sent explicitly; otherwise it follows the provider.
+    delivery = (payload.get('delivery_method') or preset['transport']).strip().lower()
+    if delivery not in DELIVERY_METHODS:
+        raise EmailSettingsError(
+            f'Delivery method must be one of: {", ".join(DELIVERY_METHODS)}.',
+            'delivery_method')
+    # The two must agree: system mail has no SMTP preset, and an SMTP preset
+    # cannot be delivered by the local MTA. Rejecting the mismatch is clearer
+    # than silently preferring one of them.
+    if delivery != preset['transport']:
+        raise EmailSettingsError(
+            f'"{preset["label"]}" is a {preset["transport"]} provider; it cannot be '
+            f'used with the {delivery} delivery method.', 'delivery_method')
+    transport = delivery
 
     enabled = payload.get('enabled', False)
     if not isinstance(enabled, bool):
@@ -293,6 +326,7 @@ def validate(payload, *, existing=None):
 
     values = {
         KEY_ENABLED: 'true' if enabled else 'false',
+        KEY_DELIVERY: delivery,
         KEY_PROVIDER: provider,
         KEY_FROM_NAME: from_name,
         KEY_FROM_EMAIL: from_email,
