@@ -100,9 +100,17 @@ class TermsOfServiceTests(unittest.TestCase):
     def test_every_section_is_rendered(self):
         with server_pg.app.test_client() as client:
             html = client.get('/terms').get_data(as_text=True)
-        self.assertEqual(html.count('<section>'), len(terms.SECTIONS))
+        # Sections carry anchor ids now, so the contents list can link to them.
+        self.assertEqual(html.count('<section id="s'), len(terms.SECTIONS))
         for heading, _paragraphs in terms.SECTIONS:
             self.assertIn(heading, html)
+        # And the body text itself, not just the headings. Compared against the
+        # escaped form, because Jinja escapes apostrophes and ampersands - which
+        # is the behaviour we want, so the test matches the rendered output.
+        from markupsafe import escape
+
+        for _heading, paragraphs in terms.SECTIONS:
+            self.assertIn(str(escape(paragraphs[0][:60])), html)
 
     def test_the_page_shows_the_version_and_effective_date(self):
         with server_pg.app.test_client() as client:
@@ -137,6 +145,78 @@ class TermsOfServiceTests(unittest.TestCase):
         with server_pg.app.test_client() as client:
             html = client.get('/signup').get_data(as_text=True)
         self.assertIn("href='/terms'", html)
+
+    def test_the_signup_terms_link_opens_safely_in_a_new_tab(self):
+        """A half-filled signup form must survive reading the terms.
+
+        rel=noopener because target=_blank without it hands the opened page a
+        reference back to the signup window.
+        """
+        with server_pg.app.test_client() as client:
+            html = client.get('/signup').get_data(as_text=True)
+        self.assertIn("target='_blank'", html)
+        self.assertIn("rel='noopener'", html)
+
+    def test_the_terms_are_reachable_with_no_session_at_all(self):
+        """Readable before an account exists, so no auth and no redirect."""
+        client = raw_client(server_pg.app)
+        response = client.get('/terms')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('Location', response.headers)
+
+    def test_the_terms_link_from_signup_actually_resolves(self):
+        """Follows the href the page publishes rather than a hardcoded path."""
+        import re
+
+        with server_pg.app.test_client() as client:
+            signup = client.get('/signup').get_data(as_text=True)
+            match = re.search(r"<a href='(/[^']*)' target='_blank'", signup)
+            self.assertIsNotNone(match, 'no terms link found on the signup page')
+            followed = client.get(match.group(1))
+        self.assertEqual(followed.status_code, 200)
+        self.assertIn(terms.VERSION, followed.get_data(as_text=True))
+
+    def test_the_terms_page_uses_the_platform_design_system(self):
+        """Not a bespoke stylesheet: the same tokens the rest of the site uses."""
+        with server_pg.app.test_client() as client:
+            html = client.get('/terms').get_data(as_text=True)
+            tokens = client.get('/static/css/tokens.css')
+        self.assertIn('/static/css/tokens.css', html)
+        self.assertEqual(tokens.status_code, 200,
+                         'the design system stylesheet must actually be served')
+        self.assertIn('Instrument+Sans', html)
+        self.assertIn('Martian+Mono', html)
+        self.assertGreater(html.count('var(--'), 20,
+                           'the page should style itself from design tokens')
+
+    def test_the_terms_page_carries_no_hardcoded_palette(self):
+        """Guards against the earlier ad-hoc dark-navy styling creeping back."""
+        with server_pg.app.test_client() as client:
+            html = client.get('/terms').get_data(as_text=True)
+        for literal in ('#0b1220', '#eef3ff', '#ffba08'):
+            self.assertNotIn(literal, html,
+                             f'{literal} is not a design-system colour')
+
+    def test_the_terms_page_has_navigable_structure(self):
+        with server_pg.app.test_client() as client:
+            html = client.get('/terms').get_data(as_text=True)
+        self.assertEqual(html.count('<section id="s'), len(terms.SECTIONS))
+        self.assertEqual(html.count('href="#s'), len(terms.SECTIONS),
+                         'every section needs a contents entry')
+        self.assertIn('try<span>Search</span>', html)
+
+    def test_the_terms_page_escapes_its_content(self):
+        """Rendered through Jinja, so a future clause with an ampersand is safe."""
+        original = terms.SECTIONS
+        terms.SECTIONS = (('Injection & <check>',
+                           ['A clause with <b>markup</b> & an ampersand.']),)
+        try:
+            with server_pg.app.test_client() as client:
+                html = client.get('/terms').get_data(as_text=True)
+        finally:
+            terms.SECTIONS = original
+        self.assertIn('Injection &amp; &lt;check&gt;', html)
+        self.assertNotIn('<b>markup</b>', html)
 
     def test_the_terms_contain_substantive_content(self):
         """Guards against the page degrading back into a placeholder."""

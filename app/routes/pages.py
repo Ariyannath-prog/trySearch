@@ -2,8 +2,7 @@
 
 from flask import Blueprint
 from datetime import date, datetime, timedelta
-from flask import Flask, jsonify, request, send_from_directory, abort, session, redirect
-from markupsafe import escape
+from flask import Flask, jsonify, render_template, request, send_from_directory, abort, session, redirect
 from sqlalchemy import (
     create_engine,
     MetaData,
@@ -350,58 +349,24 @@ def verify_email_page():
 
 @pages_bp.route('/terms')
 def terms_page():
-    """Terms of service.
+    """Terms of service. Public, unauthenticated, no session required.
 
-    Public and unauthenticated: it has to be readable from the signup form before
-    an account exists. The version shown is app/terms.VERSION, the same constant
-    recorded on users.terms_version at signup.
+    It has to be readable from the signup form before an account exists, so there
+    is deliberately no auth check here.
+
+    Rendered from templates/terms.html on the platform design system
+    (static/css/tokens.css), so it inherits the brand palette, typography and
+    light/dark behaviour rather than carrying its own. The text and version come
+    from app/terms.py - the same constant recorded on users.terms_version at
+    signup - so the published page and the stored acceptance cannot disagree.
     """
-    sections = ''.join(
-        '<section><h2>{heading}</h2>{paragraphs}</section>'.format(
-            heading=escape(heading),
-            paragraphs=''.join(f'<p>{escape(text)}</p>' for text in paragraphs),
-        )
-        for heading, paragraphs in terms_doc.SECTIONS
+    return render_template(
+        'terms.html',
+        version=terms_doc.VERSION,
+        effective_date=terms_doc.EFFECTIVE_DATE,
+        contact_email=terms_doc.CONTACT_EMAIL,
+        sections=terms_doc.SECTIONS,
     )
-    html = """
-    <!doctype html>
-    <html lang='en'>
-      <head>
-        <meta charset='utf-8'>
-        <meta name='viewport' content='width=device-width,initial-scale=1'>
-        <title>Terms of Service — trySearch</title>
-        <style>
-          *{box-sizing:border-box}
-          body{font-family:system-ui,sans-serif;margin:0;padding:clamp(1.25rem,5vw,3rem);
-               background:#0b1220;color:#eef3ff;line-height:1.7}
-          main{max-width:46rem;margin:0 auto}
-          h1{font-size:clamp(1.6rem,4vw,2.1rem);margin:0 0 .3rem}
-          .meta{color:#9cb2d3;font-size:14px;margin:0 0 2rem}
-          h2{font-size:1.05rem;margin:2rem 0 .5rem;color:#ffba08}
-          p{margin:.6rem 0;color:#dce6f7}
-          a{color:#6eaff0}
-          footer{margin-top:2.5rem;padding-top:1.25rem;border-top:1px solid #243049;
-                 color:#9cb2d3;font-size:14px}
-        </style>
-      </head>
-      <body>
-        <main>
-          <h1>Terms of Service</h1>
-          <p class='meta'>Version __VERSION__ &middot; effective __EFFECTIVE__</p>
-          __SECTIONS__
-          <footer>
-            <p>Questions: <a href='mailto:__CONTACT__'>__CONTACT__</a></p>
-            <p><a href='/signup'>Back to sign up</a> &middot; <a href='/'>Home</a></p>
-          </footer>
-        </main>
-      </body>
-    </html>
-    """
-    return (html
-            .replace('__VERSION__', escape(terms_doc.VERSION))
-            .replace('__EFFECTIVE__', escape(terms_doc.EFFECTIVE_DATE))
-            .replace('__CONTACT__', escape(terms_doc.CONTACT_EMAIL))
-            .replace('__SECTIONS__', sections))
 
 
 @pages_bp.route('/forgot-password')
