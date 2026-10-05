@@ -32,6 +32,7 @@ from app.models import contacts
 from app.utils import row_to_dict
 from app import terms as terms_doc
 from app.accounts import is_verified
+from app.onboarding_state import STAGE_NOT_STARTED, onboarding_state
 from app.admin_auth import require_platform_admin_page
 from app.security import issue_token
 
@@ -103,8 +104,19 @@ def health():
 
 @pages_bp.route('/analytics')
 def analytics_page():
-    if not session.get('user_id'):
+    """The real production dashboard.
+
+    A user with no workspace at all has nothing here to render, and the empty
+    state's only action is "Get started", which goes to onboarding anyway - so
+    send them straight there. This is deliberately the *only* stage that
+    redirects: a workspace that exists but has not finished onboarding still has
+    partial data worth looking at, and a hard redirect would make it unreachable.
+    """
+    user_id = session.get('user_id')
+    if not user_id:
         return redirect('/login')
+    if onboarding_state(user_id)['stage'] == STAGE_NOT_STARTED:
+        return redirect('/onboarding')
     return send_from_directory(BASE_DIR, 'analytics.html')
 
 @pages_bp.route('/prompt-intelligence')
@@ -527,10 +539,11 @@ def login_page():
             const j=await res.json();
             const note=document.getElementById('note');
             if(res.ok){
-              /* An unconfirmed address goes to confirmation, not the dashboard.
-                 Accounts that predate verification are backfilled as verified,
-                 so existing customers still land on /analytics. */
-              const next = j.email_verified === false ? '/verify-email' : '/analytics';
+              /* The destination is decided server-side (app/onboarding_state.py):
+                 unconfirmed -> /verify-email, onboarding unfinished -> /onboarding,
+                 otherwise /analytics. The fallback only matters if an older
+                 response shape ever reaches this page. */
+              const next = j.next || (j.email_verified === false ? '/verify-email' : '/analytics');
               note.textContent='Logged in. Redirecting...';
               setTimeout(()=>location.href=next,400);
             } else { note.textContent = j.error || 'Login failed'; }

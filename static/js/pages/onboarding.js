@@ -346,5 +346,28 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', renderDomainStep);
+  /* Resume rather than restart. The stage comes from the backend
+     (app/onboarding_state.py), derived from the workspace/prompt/engine/scan
+     rows onboarding already writes - so a user who got as far as choosing
+     engines does not have to re-enter their domain and re-approve prompts.
+
+     Anything unexpected falls back to step 1, which is always safe: the domain
+     step writes nothing until the user approves a profile. */
+  function boot() {
+    TS.api.getOnboardingState().then(function (res) {
+      if (!res.ok || !res.body) { renderDomainStep(); return; }
+      var info = res.body;
+      if (info.workspace_id) state.workspaceId = info.workspace_id;
+
+      if (info.resume === 'engines' && state.workspaceId) {
+        renderEnginesStep();
+      } else if (info.resume === 'analysis' && state.workspaceId) {
+        renderAnalysisStep();
+      } else {
+        renderDomainStep();
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', boot);
 })();

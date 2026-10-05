@@ -28,6 +28,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from app import accounts
 from app.db import engine
 from app import mailer
+from app.onboarding_state import onboarding_state, post_login_destination
 from app.mailer import send_password_reset_email, send_verification_email
 from app.models import users
 from app.ratelimit import (
@@ -157,11 +158,17 @@ def api_login():
         conn.execute(update(users).where(users.c.id == user['id']).values(
             last_login_at=datetime.utcnow()))
 
+    email_verified = user['email_verified_at'] is not None
+
+    # Where to go next is decided here, not in the page's JavaScript: a user who
+    # has not finished onboarding has no workspace for the dashboard to show, and
+    # landing them on an empty /analytics is the bug this replaces.
     return jsonify({
         'status': 'success', 'message': 'Logged in', 'username': user['username'],
-        # The client needs to know where to send the user next. Login still works
-        # for an unverified account by design; onboarding is what is gated.
-        'email_verified': user['email_verified_at'] is not None,
+        # Login still works for an unverified account by design; onboarding is
+        # what is gated.
+        'email_verified': email_verified,
+        'next': post_login_destination(user['id'], email_verified=email_verified),
     })
 
 @auth_bp.route('/api/logout', methods=['POST'])
@@ -199,12 +206,25 @@ def api_me():
             if not user.get('is_active'):
                 session.clear()
                 return jsonify({'logged_in': False, 'csrf_token': issue_token()})
-            return jsonify({
+            email_verified = user.get('email_verified_at') is not None
+            payload = {
                 'logged_in': True,
                 'user': user,
-                'email_verified': user.get('email_verified_at') is not None,
+                'email_verified': email_verified,
                 'csrf_token': token,
-            })
+            }
+            if email_verified:
+                # Same derivation the login redirect uses, so a client that
+                # refreshes /api/me cannot disagree with it.
+                state = onboarding_state(user_id)
+                payload['onboarding'] = {
+                    'stage': state['stage'],
+                    'complete': state['onboarding_complete'],
+                    'next': state['next'],
+                    'resume': state['resume'],
+                    'workspace_id': state['workspace_id'],
+                }
+            return jsonify(payload)
         session.clear()
     return jsonify({'logged_in': False, 'csrf_token': token})
 

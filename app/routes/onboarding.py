@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.scanning import credential_for_engine
 from app.accounts import is_verified
+from app.onboarding_state import onboarding_state
 from app.tenancy import current_user_id, default_org_for_user, require_workspace
 from app.utils import normalise_domain, row_to_dict
 
@@ -51,6 +52,20 @@ def require_verified_user():
             'next': '/verify-email',
         }), 403)
     return user_id, None
+
+
+@onboarding_bp.route('/api/onboarding/state', methods=['GET'])
+def onboarding_state_endpoint():
+    """Where this user is in onboarding, so the wizard can resume.
+
+    Derived from existing workspace/prompt/engine/scan state - see
+    app/onboarding_state.py. Requires a confirmed address, like the rest of
+    onboarding.
+    """
+    user_id, error = require_verified_user()
+    if error:
+        return error
+    return jsonify(onboarding_state(user_id))
 
 @onboarding_bp.route('/api/onboarding/preview', methods=['POST'])
 def preview_onboarding_profile():

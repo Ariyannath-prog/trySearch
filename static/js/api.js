@@ -140,6 +140,9 @@
       return apiCall('/api/analytics/projects/' + id + '/prompt-scans', { method: 'POST', body: '{}' });
     },
     logout: function () { return apiCall('/api/logout', { method: 'POST' }); },
+    /* Where the user is in onboarding, derived server-side from existing
+       workspace/prompt/engine/scan state. Used to resume rather than restart. */
+    getOnboardingState: function () { return apiCall('/api/onboarding/state'); },
     previewOnboarding: function (domain) {
       return apiCall('/api/onboarding/preview', { method: 'POST', body: JSON.stringify({ domain: domain }) });
     },
