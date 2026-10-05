@@ -136,6 +136,11 @@ def score_envelope(row, *, has_completed_run=True):
         'citation_rate': metric(
             int(round(((row or {}).get('citation_rate') or 0) * answer_count)),
             answer_count),
+        # Share of voice has no Wilson interval here: its true denominator is
+        # brand + competitor mentions, which metrics_daily does not store
+        # separately from the final ratio. Shown as a plain value + sample
+        # size rather than a fabricated interval.
+        'sov': {'value': (row or {}).get('sov'), 'n': answer_count},
     }
 
     if state == STATE_OK:

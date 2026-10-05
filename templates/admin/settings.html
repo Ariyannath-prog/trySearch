@@ -1,0 +1,18 @@
+{% extends "admin/layout.html" %}
+{% block title %}Settings · trySearch Admin{% endblock %}
+{% block content %}
+<div class="eyebrow">Platform</div>
+<h1>Settings</h1>
+<div class="sub">Global settings and feature flags will be managed here.</div>
+
+<div class="section">
+  <div class="panel">
+    <h2 style="font-size:17px;margin:0 0 8px">Email / SMTP</h2>
+    <p style="color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 14px">
+      The application's outbound email provider - used for signup confirmation
+      today, and for password reset, alerts and reports later - is configured on
+      its own page.</p>
+    <a href="/admin/email" style="display:inline-block;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:#17131d;font-size:12px">Configure email provider</a>
+  </div>
+</div>
+{% endblock %}

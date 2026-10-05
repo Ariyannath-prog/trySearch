@@ -9,20 +9,92 @@ from sqlalchemy import (
 )
 import hashlib
 import json
+import re
 
+from app.analytics_filters import engine_providers_for_ids
 from app.crawler.fetch import normalise_site_host
 from app.db import engine
 from app.extraction.mentions import domain_matches, project_brand_aliases, text_mentions_alias
 from app.jobs import latest_site_audit
-from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts
-from app.rollup import latest_metrics, latest_metrics_all_engines
-from app.stats import describe_delta, score_envelope
+from app.llm import open_model_settings
+from app.models import extractions, analytics_answer_sources, analytics_content_opportunities, competitors, mentions as mentions_table, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts, engines
+from app.rollup import ALL_RUN_TYPES, SCHEDULED_RUN_TYPE, blend, collect_counts_range, latest_metrics, latest_metrics_all_engines, score_from_counts, sentiment_index_from_labels
+from app.stats import MIN_ANSWERS_FOR_SCORE, describe_delta, metric, score_envelope
 from app.tenancy import workspace_for_member
-from app.utils import row_to_dict
+from app.utils import row_to_dict, to_iso
 
 
-def analytics_report(workspace_id, user_id):
-    """Dashboard payload. Reads metrics_daily and nothing else for its numbers.
+def _score_row(counts, *, date, engine_id=None):
+    """counts (a collect_counts()-shaped dict) -> a metrics_daily-shaped row,
+    via score_from_counts() unmodified - the exact PRD §13 formula, whether
+    the counts came from the stored rollup or a live filtered read."""
+    labels = counts.pop('sentiment_labels', [])
+    row = score_from_counts(**counts, sentiment_index=sentiment_index_from_labels(labels))
+    row['date'] = date
+    row['engine_id'] = engine_id
+    return row
+
+
+def _live_series(workspace_id, *, start_date, end_date, region, providers, conn,
+                 run_types=(SCHEDULED_RUN_TYPE,)):
+    """Compute the metrics_daily-shaped series live from stored evidence.
+
+    Two cases need this. metrics_daily has no region column, so a region
+    filter cannot come from the stored rollup at all. And metrics_daily is
+    scheduled-only by design, so a workspace whose only real measurements
+    came from on-demand scans has an empty rollup and nothing to show -
+    `run_types` widens the cohort for that case without touching what gets
+    persisted.
+
+    Either way this runs collect_counts_range() + the *unmodified*
+    score_from_counts()/blend(), grouped by day exactly like the stored
+    rollup, and never writes a row: this is a filtered view, not a rollup.
+    """
+    by_day_provider = collect_counts_range(
+        workspace_id, start_date=start_date, end_date=end_date,
+        region=region, providers=providers, run_types=run_types, conn=conn)
+
+    all_providers = {provider for (_day, provider) in by_day_provider}
+    engine_id_by_provider = dict(conn.execute(
+        select(engines.c.display_name, engines.c.id).where(engines.c.display_name.in_(all_providers))
+    ).all()) if all_providers else {}
+
+    by_day = {}
+    for (day, provider), counts in by_day_provider.items():
+        by_day.setdefault(day, []).append((provider, dict(counts)))
+
+    series, per_engine = [], []
+    for day in sorted(by_day.keys(), reverse=True):
+        per_engine_scores = []
+        for provider, counts in by_day[day]:
+            row = _score_row(dict(counts), date=day, engine_id=engine_id_by_provider.get(provider))
+            per_engine_scores.append(row)
+            per_engine.append(dict(row))
+        blended = blend(per_engine_scores) if per_engine_scores else score_from_counts(
+            total_answers=0, mentioned=0, reciprocal_rank_sum=0.0, cited=0)
+        blended['date'] = day
+        blended['engine_id'] = None
+        series.append(blended)
+    return series, per_engine
+
+
+def analytics_report(workspace_id, user_id, filters=None):
+    """Dashboard payload.
+
+    `history` - the daily trend - is the stored rollup and nothing else, so
+    it stays scheduled-only and stays empty until enough scheduled days
+    exist. The KPI cards are a different question: "what have we actually
+    measured for this workspace, under these filters, right now". Answering
+    that only from metrics_daily means a scan someone just ran is invisible
+    on their own dashboard, because on-demand runs never reach the rollup.
+
+    So the KPI block prefers the stored rollup and falls back to a live
+    read of the same evidence, on-demand runs included, when the rollup has
+    measured nothing in range (see _live_series()). The fallback reuses the
+    unmodified PRD §13 formula and the same MIN_ANSWERS_FOR_SCORE gate, so a
+    Visibility Score is still withheld when the sample cannot support one -
+    nothing is invented to fill the cards. `visibility['source']` says which
+    path produced the numbers.
 
     The previous version synthesised an "engines" list out of site-crawl sub-scores
     - Metadata, Content, Crawlability, Structured data - and rendered them where AI
@@ -33,11 +105,87 @@ def analytics_report(workspace_id, user_id):
     if not project:
         return None
 
-    series = latest_metrics(workspace_id)
-    latest = series[0] if series else None
-    per_engine = [row for row in latest_metrics_all_engines(workspace_id)
-                  if row['engine_id'] is not None]
+    filters = filters or {}
+    start_date, end_date = filters.get('start_date'), filters.get('end_date')
+    region, engine_ids = filters.get('region'), filters.get('engine_ids')
 
+    with engine.connect() as conn:
+        providers = engine_providers_for_ids(engine_ids, conn) if engine_ids else None
+        if region:
+            series, per_engine = _live_series(
+                workspace_id, start_date=start_date, end_date=end_date,
+                region=region, providers=providers, conn=conn)
+        else:
+            per_engine = [row for row in latest_metrics_all_engines(
+                workspace_id, start_date=start_date, end_date=end_date)
+                if row['engine_id'] is not None]
+            if engine_ids:
+                per_engine = [row for row in per_engine if row['engine_id'] in engine_ids]
+                by_date = {}
+                for row in per_engine:
+                    by_date.setdefault(row['date'], []).append(row)
+                series = []
+                for date in sorted(by_date.keys(), reverse=True):
+                    blended = blend(by_date[date])
+                    blended['date'] = date
+                    blended['engine_id'] = None
+                    series.append(blended)
+            else:
+                series = latest_metrics(workspace_id, start_date=start_date, end_date=end_date)
+
+        # `history` keeps whatever the rollup gave it, always - the daily trend
+        # stays the stored, scheduled-only series and is allowed to be empty.
+        trend_series = series
+        kpi_source = 'scheduled_rollup'
+
+        # The rollup measured nothing in range. That is the normal state for a
+        # workspace whose real scans were all run on demand, and it is exactly
+        # when the cards must stop being blank: read the same evidence live,
+        # with on-demand runs included, through the same formula.
+        if not any((row.get('answer_count') or 0) for row in series):
+            live_series, live_per_engine = _live_series(
+                workspace_id, start_date=start_date, end_date=end_date,
+                region=region, providers=providers, conn=conn,
+                run_types=ALL_RUN_TYPES)
+            if any((row.get('answer_count') or 0) for row in live_series):
+                series, per_engine = live_series, live_per_engine
+                kpi_source = 'live_scan_evidence'
+
+        # metrics_daily/the live computation only stores engine_id; a
+        # dashboard has nothing to label a row with unless the name comes
+        # along for the ride.
+        if per_engine:
+            present_ids = {row['engine_id'] for row in per_engine if row['engine_id'] is not None}
+            names = {
+                erow['id']: {'key': erow['key'], 'display_name': erow['display_name']}
+                for erow in conn.execute(
+                    select(engines.c.id, engines.c.key, engines.c.display_name)
+                    .where(engines.c.id.in_(present_ids))
+                ).mappings()
+            } if present_ids else {}
+            for row in per_engine:
+                row.update(names.get(row['engine_id'], {'key': None, 'display_name': None}))
+
+        # Collapse to one row per engine (the most recent date within the
+        # filtered range) for the comparison table - a snapshot, not a series.
+        latest_per_engine = {}
+        for row in per_engine:
+            existing = latest_per_engine.get(row['engine_id'])
+            if existing is None or str(row['date']) > str(existing['date']):
+                latest_per_engine[row['engine_id']] = row
+        per_engine = list(latest_per_engine.values())
+
+    scans_in_range = scan_history(workspace_id, filters=filters)
+    scan_summary = {
+        'total': len(scans_in_range),
+        'completed': sum(1 for s in scans_in_range if s['status'] == 'succeeded'),
+        'partial': sum(1 for s in scans_in_range if s['status'] == 'partial'),
+        'failed': sum(1 for s in scans_in_range if s['status'] == 'failed'),
+        'prompts_total': sum(s['prompt_count'] for s in scans_in_range),
+        'prompts_completed': sum(s['completed_count'] for s in scans_in_range),
+    }
+
+    latest = series[0] if series else None
     # Every metric leaves this function as {value, low, high, n} with an explicit
     # state, never as a bare number. T11: the product's stated differentiator.
     visibility = score_envelope(latest, has_completed_run=bool(series))
@@ -46,15 +194,76 @@ def analytics_report(workspace_id, user_id):
         visibility.get('visibility_score'),
         {'value': previous['visibility_score']} if previous else None,
     )
+    # Which cohort produced these cards, stated rather than implied: the
+    # scheduled daily rollup, or a live read that counts on-demand scans too.
+    visibility['source'] = kpi_source
+    visibility['includes_on_demand'] = kpi_source == 'live_scan_evidence'
 
     return {
         'project': row_to_dict(project),
         'visibility': visibility,
-        'history': [row_to_dict(row) for row in reversed(series)],
+        'history': [row_to_dict(row) for row in reversed(trend_series)],
         'engines': [row_to_dict(row) for row in per_engine],
-        # Site health is a property of the website, not an engine result.
+        'scan_summary': scan_summary,
+        # Site health is a property of the website, not a filtered engine
+        # result - crawls have no engine/region dimension to filter by.
         'site_health': latest_site_audit(workspace_id),
+        'topic_breakdown': topic_breakdown(workspace_id),
     }
+
+
+def topic_breakdown(workspace_id, conn=None):
+    """Mention/citation rate per topic, scheduled runs only.
+
+    Same run_type restriction collect_counts() uses for metrics_daily itself
+    (PRD §13: on-demand runs are excluded so someone actively testing a
+    change doesn't bias the numbers) - kept consistent rather than inventing
+    a second methodology. Reuses app.stats.metric() for the same
+    {value,low,high,n} envelope every other rate in the product uses.
+    """
+    query = (
+        select(
+            analytics_provider_answers.c.topic_name,
+            extractions.c.brand_mentioned,
+            extractions.c.brand_cited,
+        )
+        .select_from(analytics_provider_answers)
+        .join(analytics_prompt_scan_runs,
+              analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+        .join(extractions,
+              (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+        .where(
+            (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+            & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+        )
+    )
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        rows = conn.execute(query).mappings().all()
+    finally:
+        if own_conn:
+            conn.close()
+
+    buckets = {}
+    for row in rows:
+        key = row['topic_name'] or 'Untagged'
+        bucket = buckets.setdefault(key, {'total': 0, 'mentioned': 0, 'cited': 0})
+        bucket['total'] += 1
+        if row['brand_mentioned']:
+            bucket['mentioned'] += 1
+        if row['brand_cited']:
+            bucket['cited'] += 1
+
+    return [
+        {
+            'topic': name,
+            'mention_rate': metric(bucket['mentioned'], bucket['total']),
+            'citation_rate': metric(bucket['cited'], bucket['total']),
+        }
+        for name, bucket in sorted(buckets.items())
+    ]
+
 
 def answer_derivations(answer_ids, conn):
     """Per-answer values that used to be flat columns on analytics_provider_answers.
@@ -129,7 +338,13 @@ def provider_evidence_rows(scan_id):
         evidence.append(item)
     return evidence
 
-def latest_prompt_evidence(workspace_id, run_id=None):
+def latest_prompt_evidence(workspace_id, run_id=None, filters=None):
+    """`filters` only narrows which run counts as "latest" - an explicit
+    run_id is always honored exactly (Scan Detail asked for that specific
+    scan; filters never hide it). Optional and default None, so every
+    existing caller (Mentions/Prompts pages, Scan Detail) is unaffected."""
+    from app.analytics_filters import scan_run_filter_clause
+
     with engine.connect() as conn:
         project = conn.execute(select(workspaces).where(
             workspaces.c.id == workspace_id
@@ -139,6 +354,9 @@ def latest_prompt_evidence(workspace_id, run_id=None):
         )
         if run_id:
             statement = statement.where(analytics_prompt_scan_runs.c.id == run_id)
+        elif filters:
+            providers = engine_providers_for_ids(filters.get('engine_ids'), conn)
+            statement = statement.where(scan_run_filter_clause(filters, providers=providers))
         scan = conn.execute(statement.order_by(desc(analytics_prompt_scan_runs.c.created_at)).limit(1)).mappings().first()
         if not scan:
             return {'run': None, 'answers': [], 'opportunities': [], 'history': []}
@@ -404,4 +622,683 @@ def competitor_citation_gaps(workspace_id, conn=None, limit=25):
     finally:
         if own_conn:
             conn.close()
+    return rows
+
+
+def citation_listing(workspace_id, conn=None):
+    """Every cited URL for a workspace, one row per URL.
+
+    citation_domain_rollup() answers "which domains" at the domain grain; this
+    answers "which URLs, cited by what, when" - the grain the Citations page's
+    per-citation table and evidence drawer need. One flat SELECT (no N+1),
+    grouped by URL in Python, the same shape topic_breakdown() already uses for
+    its own per-topic grouping. No run_type filter: citations are evidence of
+    what a scan actually returned, not the gated Visibility Score, so an
+    on-demand "Run scan" click is included here exactly like
+    citation_domain_rollup() and the existing /citations endpoint already do.
+    """
+    query = (
+        select(
+            analytics_answer_sources.c.answer_id,
+            analytics_answer_sources.c.rank,
+            analytics_answer_sources.c.source_kind,
+            analytics_answer_sources.c.url,
+            analytics_answer_sources.c.domain,
+            analytics_answer_sources.c.category,
+            analytics_provider_answers.c.prompt_id,
+            analytics_provider_answers.c.provider,
+            analytics_provider_answers.c.created_at,
+            func.coalesce(analytics_provider_answers.c.prompt_text,
+                          analytics_tracked_prompts.c.prompt).label('prompt'),
+        )
+        .select_from(analytics_answer_sources)
+        .join(analytics_provider_answers,
+              analytics_provider_answers.c.id == analytics_answer_sources.c.answer_id)
+        .join(analytics_prompt_scan_runs,
+              analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+        .outerjoin(analytics_tracked_prompts,
+                   analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+        .where(analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+    )
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        rows = conn.execute(query).mappings().all()
+    finally:
+        if own_conn:
+            conn.close()
+
+    by_url = {}
+    for row in rows:
+        entry = by_url.setdefault(row['url'], {
+            'url': row['url'], 'domain': row['domain'], 'category': row['category'],
+            'source_kinds': set(), 'engines': set(), 'prompts': {},
+            'first_seen': row['created_at'], 'last_seen': row['created_at'],
+            'occurrences': [],
+        })
+        entry['source_kinds'].add(row['source_kind'])
+        entry['engines'].add(row['provider'])
+        if row['prompt']:
+            entry['prompts'][row['prompt']] = True
+        if row['created_at'] < entry['first_seen']:
+            entry['first_seen'] = row['created_at']
+        if row['created_at'] > entry['last_seen']:
+            entry['last_seen'] = row['created_at']
+        entry['occurrences'].append({
+            'answer_id': row['answer_id'], 'prompt_id': row['prompt_id'],
+            'prompt': row['prompt'], 'engine': row['provider'],
+            'rank': row['rank'], 'created_at': to_iso(row['created_at']),
+        })
+
+    listing = []
+    for entry in by_url.values():
+        entry['citation_count'] = len(entry['occurrences'])
+        entry['source_kinds'] = sorted(entry['source_kinds'])
+        entry['engines'] = sorted(entry['engines'])
+        entry['prompts'] = sorted(entry['prompts'].keys())
+        entry['occurrences'].sort(key=lambda o: o['created_at'], reverse=True)
+        entry['bucket'] = (
+            entry['category'] if entry['category'] in ('own', 'competitor') else 'third_party'
+        )
+        entry['first_seen'] = to_iso(entry['first_seen'])
+        entry['last_seen'] = to_iso(entry['last_seen'])
+        listing.append(entry)
+    listing.sort(key=lambda entry: entry['citation_count'], reverse=True)
+    return listing
+
+
+def _entity_metrics(*, total, mention_rows, cited_answer_ids):
+    """mention_rows: [(answer_id, rank_or_None), ...] for one entity.
+
+    Wraps rollup.score_from_counts() - the exact PRD §13 formula the brand's
+    own official Visibility Score is computed with - so a competitor's score
+    is arithmetically comparable to the brand's, not a lookalike computed a
+    different way.
+    """
+    mentioned = len(mention_rows)
+    reciprocal_rank_sum = sum(1.0 / r for _, r in mention_rows if r)
+    scored = score_from_counts(
+        total_answers=total, mentioned=mentioned,
+        reciprocal_rank_sum=reciprocal_rank_sum, cited=len(cited_answer_ids),
+    )
+    ranks = [r for _, r in mention_rows if r]
+    return {
+        'mention_rate': metric(mentioned, total),
+        'citation_rate': metric(len(cited_answer_ids), total),
+        'average_rank': round(sum(ranks) / len(ranks), 2) if ranks else None,
+        'visibility_score': scored['visibility_score'] if total >= MIN_ANSWERS_FOR_SCORE else None,
+        'mention_count': mentioned,
+        '_day_metrics': scored,  # only used internally for the trend series
+    }
+
+
+def competitor_intelligence(workspace_id, conn=None):
+    """Competitor comparison: the live `competitors` table plus the brand,
+    scored on the exact cohort and formula metrics_daily uses for the brand's
+    own Visibility Score (workspace-scoped, run_type='scheduled' only - the
+    same restriction rollup.collect_counts() applies, so a competitor's score
+    is on equal footing with the brand's, not measured more generously).
+
+    Three flat queries, no N+1: measured answers (+ the brand's own stored
+    extraction flags, same shape as collect_counts()), competitor mention
+    rows (already stored by the extraction pipeline - no text is re-scanned),
+    and already-classified 'competitor' source rows (domain-matched to a
+    specific tracked competitor in Python, the same way brand_rankings()
+    matches a domain against a single brand).
+    """
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        project = conn.execute(select(workspaces).where(
+            workspaces.c.id == workspace_id)).mappings().first()
+        competitor_rows = [row_to_dict(row) for row in conn.execute(
+            select(competitors).where(competitors.c.workspace_id == workspace_id)
+            .order_by(competitors.c.name)).mappings().all()]
+
+        answers = conn.execute(
+            select(
+                analytics_provider_answers.c.id,
+                analytics_provider_answers.c.provider,
+                analytics_provider_answers.c.created_at,
+                func.coalesce(analytics_provider_answers.c.prompt_text,
+                              analytics_tracked_prompts.c.prompt).label('prompt'),
+                extractions.c.brand_mentioned, extractions.c.brand_rank,
+                extractions.c.brand_cited,
+            )
+            .select_from(analytics_provider_answers)
+            .join(analytics_prompt_scan_runs,
+                  analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+            .join(extractions,
+                  (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+            .outerjoin(analytics_tracked_prompts,
+                       analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+            .where(
+                (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+                & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+            )
+        ).mappings().all()
+        answers_by_id = {row['id']: row for row in answers}
+
+        competitor_mention_rows, competitor_source_rows = [], []
+        if answers:
+            competitor_mention_rows = conn.execute(
+                select(mentions_table.c.competitor_id, mentions_table.c.rank,
+                       extractions.c.answer_id)
+                .select_from(mentions_table)
+                .join(extractions,
+                      (extractions.c.id == mentions_table.c.extraction_id) & extractions.c.is_current)
+                .join(analytics_provider_answers,
+                      analytics_provider_answers.c.id == extractions.c.answer_id)
+                .join(analytics_prompt_scan_runs,
+                      analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+                .where(
+                    (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+                    & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+                    & (mentions_table.c.entity_type == 'competitor')
+                )
+            ).mappings().all()
+
+            competitor_source_rows = conn.execute(
+                select(analytics_answer_sources.c.answer_id, analytics_answer_sources.c.url)
+                .select_from(analytics_answer_sources)
+                .join(analytics_provider_answers,
+                      analytics_provider_answers.c.id == analytics_answer_sources.c.answer_id)
+                .join(analytics_prompt_scan_runs,
+                      analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+                .where(
+                    (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+                    & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+                    & (analytics_answer_sources.c.category == 'competitor')
+                )
+            ).mappings().all()
+    finally:
+        if own_conn:
+            conn.close()
+
+    total = len(answers)
+
+    mentions_by_competitor = {}
+    mentions_by_answer = {}
+    for row in competitor_mention_rows:
+        mentions_by_competitor.setdefault(row['competitor_id'], []).append(
+            (row['answer_id'], row['rank']))
+        mentions_by_answer.setdefault(row['answer_id'], []).append(
+            (row['competitor_id'], row['rank']))
+
+    urls_by_answer = {}
+    for row in competitor_source_rows:
+        urls_by_answer.setdefault(row['answer_id'], []).append(row['url'])
+
+    def cited_answer_ids_for(domains):
+        if not domains:
+            return set()
+        return {
+            answer_id for answer_id, urls in urls_by_answer.items()
+            if any(domain_matches(url, domain) for url in urls for domain in domains)
+        }
+
+    # -- entities -----------------------------------------------------------
+    brand_mention_rows = [
+        (row['id'], row['brand_rank']) for row in answers if row['brand_mentioned']
+    ]
+    brand_cited_ids = {row['id'] for row in answers if row['brand_cited']}
+    brand_metrics = _entity_metrics(
+        total=total, mention_rows=brand_mention_rows, cited_answer_ids=brand_cited_ids)
+    entities = [{
+        'id': 'brand', 'name': project['brand_name'] if project else None,
+        'domain': project['domain'] if project else None, 'tracked': True,
+        **{k: v for k, v in brand_metrics.items() if not k.startswith('_')},
+    }]
+
+    for competitor in competitor_rows:
+        mention_rows = mentions_by_competitor.get(competitor['id'], [])
+        cited_ids = cited_answer_ids_for(competitor.get('domains'))
+        entity_metrics = _entity_metrics(
+            total=total, mention_rows=mention_rows, cited_answer_ids=cited_ids)
+        entities.append({
+            'id': competitor['id'], 'name': competitor['name'],
+            'domain': (competitor.get('domains') or [None])[0],
+            'domains': competitor.get('domains') or [], 'tracked': False,
+            **{k: v for k, v in entity_metrics.items() if not k.startswith('_')},
+        })
+
+    total_mentions = sum(e['mention_count'] for e in entities)
+    for entity in entities:
+        entity['share_of_voice'] = (
+            round(entity['mention_count'] / total_mentions, 4) if total_mentions else None)
+    entities.sort(key=lambda e: (
+        e['mention_rate']['value'] is None, -(e['mention_rate']['value'] or 0),
+        not e['tracked'], (e['name'] or '').casefold(),
+    ))
+    for rank, entity in enumerate(entities, 1):
+        entity['rank'] = rank
+
+    # -- trend, bucketed by UTC day -----------------------------------------
+    def day_of(answer_id):
+        return answers_by_id[answer_id]['created_at'].date()
+
+    days_totals = {}
+    for row in answers:
+        d = row['created_at'].date()
+        days_totals[d] = days_totals.get(d, 0) + 1
+
+    def day_series(mention_rows_by_day, cited_ids_by_day):
+        series = []
+        for d in sorted(days_totals):
+            day_total = days_totals[d]
+            day_mentions = mention_rows_by_day.get(d, [])
+            day_cited = cited_ids_by_day.get(d, set())
+            scored = score_from_counts(
+                total_answers=day_total, mentioned=len(day_mentions),
+                reciprocal_rank_sum=sum(1.0 / r for r in day_mentions if r),
+                cited=len(day_cited),
+            )
+            series.append({
+                'date': d.isoformat(),
+                'visibility_score': scored['visibility_score'],
+                'mention_rate': scored['mention_rate'],
+            })
+        return series
+
+    brand_ranks_by_day = {}
+    brand_cited_by_day = {}
+    for row in answers:
+        d = row['created_at'].date()
+        if row['brand_mentioned']:
+            brand_ranks_by_day.setdefault(d, []).append(row['brand_rank'])
+        if row['brand_cited']:
+            brand_cited_by_day.setdefault(d, set()).add(row['id'])
+    trend = {'brand': day_series(brand_ranks_by_day, brand_cited_by_day)}
+
+    for competitor in competitor_rows:
+        ranks_by_day = {}
+        for answer_id, rank in mentions_by_competitor.get(competitor['id'], []):
+            ranks_by_day.setdefault(day_of(answer_id), []).append(rank)
+        cited_ids = cited_answer_ids_for(competitor.get('domains'))
+        cited_by_day = {}
+        for answer_id in cited_ids:
+            cited_by_day.setdefault(day_of(answer_id), set()).add(answer_id)
+        trend[str(competitor['id'])] = day_series(ranks_by_day, cited_by_day)
+
+    # -- prompts where a competitor outperforms the brand --------------------
+    outperforms = []
+    competitor_names = {c['id']: c['name'] for c in competitor_rows}
+    for row in answers:
+        brand_rank = row['brand_rank'] if row['brand_mentioned'] else None
+        for competitor_id, competitor_rank in mentions_by_answer.get(row['id'], []):
+            if competitor_rank is None:
+                continue
+            if brand_rank is not None and competitor_rank >= brand_rank:
+                continue
+            outperforms.append({
+                'answer_id': row['id'], 'prompt': row['prompt'], 'engine': row['provider'],
+                'created_at': to_iso(row['created_at']),
+                'competitor_id': competitor_id,
+                'competitor_name': competitor_names.get(competitor_id),
+                'competitor_rank': competitor_rank, 'brand_rank': brand_rank,
+            })
+    outperforms.sort(key=lambda o: o['created_at'], reverse=True)
+
+    return {
+        'measured_answer_count': total, 'threshold': MIN_ANSWERS_FOR_SCORE,
+        'entities': entities, 'trend': trend, 'outperforms': outperforms,
+    }
+
+
+def _context_snippet(text_value, offset, radius=80):
+    """A window of the stored answer text around a real character offset -
+    never a fabricated excerpt, and never the whole answer (that's what the
+    evidence drawer is for)."""
+    if not text_value or offset is None:
+        return None
+    start = max(0, offset - radius)
+    end = min(len(text_value), offset + radius)
+    snippet = text_value[start:end].strip()
+    if start > 0:
+        snippet = '…' + snippet
+    if end < len(text_value):
+        snippet = snippet + '…'
+    return snippet
+
+
+def mention_listing(workspace_id, conn=None, limit=500):
+    """Every measured answer for a workspace, across every run - not just the
+    latest one (latest_prompt_evidence) or one scan (provider_evidence_rows).
+    Reuses answer_derivations() for the brand fields it already computes
+    correctly rather than re-deriving them, and reads the mentions table
+    (already written by the extraction pipeline) for context and competitor
+    attribution - nothing here re-scans answer text.
+    """
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        answers = conn.execute(
+            select(
+                analytics_provider_answers.c.id,
+                analytics_provider_answers.c.provider,
+                analytics_provider_answers.c.answer_text,
+                analytics_provider_answers.c.created_at,
+                analytics_provider_answers.c.scan_run_id,
+                analytics_prompt_scan_runs.c.run_type,
+                analytics_prompt_scan_runs.c.region,
+                func.coalesce(analytics_provider_answers.c.prompt_text,
+                              analytics_tracked_prompts.c.prompt).label('prompt'),
+                func.coalesce(analytics_provider_answers.c.topic_name,
+                              analytics_topics.c.name).label('topic_name'),
+            )
+            .select_from(analytics_provider_answers)
+            .join(analytics_prompt_scan_runs,
+                  analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+            .outerjoin(analytics_tracked_prompts,
+                       analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+            .outerjoin(analytics_topics,
+                       analytics_tracked_prompts.c.topic_id == analytics_topics.c.id)
+            .where(analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+            .order_by(desc(analytics_provider_answers.c.created_at))
+            .limit(limit)
+        ).mappings().all()
+        answer_ids = [row['id'] for row in answers]
+        derived = answer_derivations(answer_ids, conn)
+
+        brand_offsets = {}
+        competitor_names = {}
+        mentions_by_answer = {}
+        if answer_ids:
+            for row in conn.execute(
+                select(extractions.c.answer_id, mentions_table.c.char_offset)
+                .select_from(mentions_table)
+                .join(extractions,
+                      (extractions.c.id == mentions_table.c.extraction_id) & extractions.c.is_current)
+                .where(
+                    (extractions.c.answer_id.in_(answer_ids))
+                    & (mentions_table.c.entity_type == 'brand')
+                )
+            ).mappings():
+                brand_offsets[row['answer_id']] = row['char_offset']
+
+            competitor_names = dict(conn.execute(
+                select(competitors.c.id, competitors.c.name)
+                .where(competitors.c.workspace_id == workspace_id)
+            ).all())
+
+            for row in conn.execute(
+                select(extractions.c.answer_id, mentions_table.c.competitor_id,
+                       mentions_table.c.rank)
+                .select_from(mentions_table)
+                .join(extractions,
+                      (extractions.c.id == mentions_table.c.extraction_id) & extractions.c.is_current)
+                .where(
+                    (extractions.c.answer_id.in_(answer_ids))
+                    & (mentions_table.c.entity_type == 'competitor')
+                )
+            ).mappings():
+                mentions_by_answer.setdefault(row['answer_id'], []).append({
+                    'competitor_id': row['competitor_id'],
+                    'name': competitor_names.get(row['competitor_id']),
+                    'rank': row['rank'],
+                })
+    finally:
+        if own_conn:
+            conn.close()
+
+    listing = []
+    for row in answers:
+        item = dict(row)
+        item['id'] = row['id']
+        item['created_at'] = to_iso(row['created_at'])
+        item.update(derived.get(row['id'], {}))
+        item['context'] = _context_snippet(row['answer_text'], brand_offsets.get(row['id']))
+        item['competitors'] = mentions_by_answer.get(row['id'], [])
+        answer_text = item.pop('answer_text', None)
+        item['answer_preview'] = (
+            (answer_text[:220].rstrip() + '…') if answer_text and len(answer_text) > 220
+            else answer_text
+        )
+        listing.append(item)
+    return listing
+
+
+def sentiment_intelligence(workspace_id, conn=None, limit=500):
+    """Brand sentiment for a workspace - scoped to scheduled runs and
+    brand-mentioned answers only, the same cohort app.sentiment's classifier
+    draws from and metrics_daily.sentiment_index is computed over, so the
+    overview, by-topic and by-engine numbers can never disagree with each
+    other about which answers count.
+
+    Brand-only, by design (see app/sentiment.py's own docstring): the
+    mentions table has no sentiment column, so a specific competitor's
+    sentiment is not representable without a schema change this pass
+    deliberately does not make.
+    """
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        rows = conn.execute(
+            select(
+                analytics_provider_answers.c.id,
+                analytics_provider_answers.c.provider,
+                analytics_provider_answers.c.created_at,
+                func.coalesce(analytics_provider_answers.c.prompt_text,
+                              analytics_tracked_prompts.c.prompt).label('prompt'),
+                func.coalesce(analytics_provider_answers.c.topic_name,
+                              analytics_topics.c.name).label('topic_name'),
+                extractions.c.sentiment,
+                extractions.c.sentiment_conf,
+            )
+            .select_from(analytics_provider_answers)
+            .join(analytics_prompt_scan_runs,
+                  analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+            .join(extractions,
+                  (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+            .outerjoin(analytics_tracked_prompts,
+                       analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+            .outerjoin(analytics_topics,
+                       analytics_tracked_prompts.c.topic_id == analytics_topics.c.id)
+            .where(
+                (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+                & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+                & (extractions.c.brand_mentioned.is_(True))
+            )
+            .order_by(desc(analytics_provider_answers.c.created_at))
+            .limit(limit)
+        ).mappings().all()
+
+        engine_names = dict(conn.execute(select(engines.c.id, engines.c.display_name)).all())
+    finally:
+        if own_conn:
+            conn.close()
+
+    labels = [row['sentiment'] for row in rows]
+    distribution = {'positive': 0, 'neutral': 0, 'negative': 0}
+    for label in labels:
+        if label in distribution:
+            distribution[label] += 1
+    classified_count = sum(distribution.values())
+
+    by_topic = {}
+    for row in rows:
+        key = row['topic_name'] or 'Untagged'
+        bucket = by_topic.setdefault(key, {'mentioned': 0, 'labels': []})
+        bucket['mentioned'] += 1
+        bucket['labels'].append(row['sentiment'])
+    topic_breakdown_rows = [
+        {
+            'topic': name, 'mentioned': bucket['mentioned'],
+            'classified': sum(1 for label in bucket['labels'] if label in distribution),
+            'sentiment_index': sentiment_index_from_labels(bucket['labels']),
+        }
+        for name, bucket in sorted(by_topic.items())
+    ]
+
+    # By engine: the most recent metrics_daily row per engine - already
+    # computed by the rollup, not re-derived here.
+    latest_by_engine = {}
+    for row in latest_metrics_all_engines(workspace_id):
+        if row['engine_id'] is None:
+            continue
+        existing = latest_by_engine.get(row['engine_id'])
+        if existing is None or row['date'] > existing['date']:
+            latest_by_engine[row['engine_id']] = row
+    engine_breakdown = [
+        {
+            'engine_id': engine_id, 'engine': engine_names.get(engine_id, 'Unknown'),
+            'sentiment_index': row['sentiment_index'], 'answer_count': row['answer_count'],
+            'date': row['date'].isoformat() if row['date'] else None,
+        }
+        for engine_id, row in sorted(latest_by_engine.items(), key=lambda kv: engine_names.get(kv[0], ''))
+    ]
+
+    # Trend: the blended metrics_daily row per day, chronological.
+    trend = [
+        {'date': row['date'].isoformat(), 'sentiment_index': row['sentiment_index']}
+        for row in reversed(latest_metrics(workspace_id, engine_id=None))
+    ]
+
+    evidence = [
+        {
+            'id': row['id'], 'provider': row['provider'], 'prompt': row['prompt'],
+            'topic_name': row['topic_name'], 'sentiment': row['sentiment'],
+            'sentiment_conf': row['sentiment_conf'], 'created_at': to_iso(row['created_at']),
+        }
+        for row in rows
+    ]
+
+    return {
+        'configured': open_model_settings()['configured'],
+        'mentioned_count': len(rows), 'classified_count': classified_count,
+        'overall_sentiment_index': sentiment_index_from_labels(labels),
+        'distribution': distribution,
+        'topics': topic_breakdown_rows, 'engines': engine_breakdown,
+        'trend': trend, 'evidence': evidence,
+    }
+
+
+_FINDING_PRIORITY = {'critical': 'high', 'high': 'high', 'medium': 'medium', 'low': 'low'}
+
+
+def recommendation_intelligence(workspace_id, conn=None):
+    """Merge the two things in this backend that actually generate a
+    title/rationale/priority recommendation - nothing else does, and this
+    function invents no third source:
+
+    - analytics_content_opportunities: rule-based or open-model-summarized
+      opportunities already written at the end of every prompt scan
+      (app/scanning.py), never re-derived here.
+    - analytics_audit_findings, via the existing latest_site_audit() (no new
+      query): every finding already carries its own `recommendation` text.
+
+    Neither table has a status/done column, so every item here is read-only
+    evidence, not a workflow state.
+    """
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        opportunity_rows = [row_to_dict(row) for row in conn.execute(
+            select(analytics_content_opportunities)
+            .where(analytics_content_opportunities.c.workspace_id == workspace_id)
+            .order_by(analytics_content_opportunities.c.priority, desc(analytics_content_opportunities.c.created_at))
+        ).mappings().all()]
+
+        answer_ids = set()
+        for row in opportunity_rows:
+            answer_ids.update(int(match.split(':')[1]) for match in
+                              re.findall(r'answer:\d+', row['evidence_refs'] or ''))
+        answer_context = {}
+        if answer_ids:
+            for row in conn.execute(
+                select(
+                    analytics_provider_answers.c.id, analytics_provider_answers.c.provider,
+                    analytics_provider_answers.c.created_at,
+                    func.coalesce(analytics_provider_answers.c.prompt_text,
+                                  analytics_tracked_prompts.c.prompt).label('prompt'),
+                    func.coalesce(analytics_provider_answers.c.topic_name,
+                                  analytics_topics.c.name).label('topic_name'),
+                )
+                .select_from(analytics_provider_answers)
+                .outerjoin(analytics_tracked_prompts,
+                           analytics_provider_answers.c.prompt_id == analytics_tracked_prompts.c.id)
+                .outerjoin(analytics_topics,
+                           analytics_tracked_prompts.c.topic_id == analytics_topics.c.id)
+                .where(analytics_provider_answers.c.id.in_(answer_ids))
+            ).mappings():
+                answer_context[row['id']] = dict(row)
+    finally:
+        if own_conn:
+            conn.close()
+
+    recommendations = []
+    for row in opportunity_rows:
+        answer_refs = [int(match.split(':')[1]) for match in
+                       re.findall(r'answer:\d+', row['evidence_refs'] or '')]
+        evidence = [
+            {
+                'answer_id': answer_id, 'prompt': ctx.get('prompt'), 'topic_name': ctx.get('topic_name'),
+                'provider': ctx.get('provider'), 'created_at': to_iso(ctx.get('created_at')),
+            }
+            for answer_id in answer_refs
+            for ctx in [answer_context.get(answer_id)] if ctx
+        ]
+        recommendations.append({
+            'id': f"opportunity:{row['id']}", 'kind': 'content_opportunity',
+            'title': row['title'], 'rationale': row['rationale'], 'priority': row['priority'],
+            'area': 'AI Visibility', 'source': row['source'], 'created_at': to_iso(row['created_at']),
+            'evidence': evidence, 'link': '/mentions',
+        })
+
+    audit = latest_site_audit(workspace_id)
+    if audit:
+        pages_by_id = {page['id']: page for page in audit['pages']}
+        for finding in audit['findings']:
+            page = pages_by_id.get(finding['page_id'])
+            recommendations.append({
+                'id': f"finding:{finding['id']}", 'kind': 'site_finding',
+                'title': finding['code'].replace('_', ' ').capitalize(),
+                'rationale': finding['recommendation'], 'priority': _FINDING_PRIORITY.get(finding['severity'], 'medium'),
+                'area': finding['area'], 'source': 'Site audit',
+                'created_at': to_iso(audit['run'].get('completed_at') or audit['run'].get('created_at')),
+                'evidence': [{'evidence_text': finding['evidence'],
+                             'url': page['final_url'] or page['url'] if page else None}],
+                'link': '/site-audit',
+            })
+
+    # Newest first within a priority tier, then high priority ahead of low -
+    # two stable passes rather than one composite key, since "newest" needs
+    # descending order and "priority" needs ascending in the same sort.
+    priority_rank = {'high': 0, 'medium': 1, 'low': 2}
+    recommendations.sort(key=lambda item: item['created_at'] or '', reverse=True)
+    recommendations.sort(key=lambda item: priority_rank.get(item['priority'], 1))
+    return recommendations
+
+
+def scan_history(workspace_id, limit=200, *, filters=None, conn=None):
+    """Every prompt-scan run for a workspace, newest first - plain columns
+    already stored on analytics_prompt_scan_runs, no aggregation. This is
+    the list latest_prompt_evidence(workspace_id, run_id) drills into for
+    one specific run's full evidence (unchanged, reused as-is).
+
+    `filters` is a parsed dict from app.analytics_filters.parse_filters()
+    (date range / region / engine_ids) - optional, so every existing caller
+    that doesn't pass one keeps working unfiltered exactly as before.
+    """
+    from app.analytics_filters import scan_run_filter_clause
+
+    own_conn = conn is None
+    conn = conn or engine.connect()
+    try:
+        providers = engine_providers_for_ids((filters or {}).get('engine_ids'), conn)
+        clause = scan_run_filter_clause(filters or {}, providers=providers)
+        rows = [row_to_dict(row) for row in conn.execute(
+            select(analytics_prompt_scan_runs)
+            .where((analytics_prompt_scan_runs.c.workspace_id == workspace_id) & clause)
+            .order_by(desc(analytics_prompt_scan_runs.c.created_at))
+            .limit(limit)
+        ).mappings().all()]
+    finally:
+        if own_conn:
+            conn.close()
+    for row in rows:
+        try:
+            row['competitor_snapshot'] = json.loads(row.get('competitor_snapshot') or '[]')
+        except json.JSONDecodeError:
+            row['competitor_snapshot'] = []
     return rows

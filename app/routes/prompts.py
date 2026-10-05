@@ -29,7 +29,16 @@ import re
 from app.config import ANALYTICS_MAX_TRACKED_PROMPTS
 from app.db import engine
 from app.llm import open_model_settings
-from app.models import competitors, analytics_scan_schedules, analytics_topics, analytics_tracked_prompts
+from app.metrics import competitor_intelligence
+from app.models import (
+    competitors,
+    analytics_scan_schedules,
+    analytics_topics,
+    analytics_tracked_prompts,
+    engines as engines_table,
+    workspace_engines,
+)
+from app.engines.registry import adapter_for
 from app.tenancy import require_workspace
 from app.scanning import next_schedule_time
 from app.utils import normalise_domain, row_to_dict
@@ -117,6 +126,14 @@ def delete_analytics_topic(workspace_id, topic_id):
         conn.execute(analytics_topics.delete().where(analytics_topics.c.id == topic_id))
     return jsonify({'status': 'success'})
 
+@prompts_bp.route('/api/analytics/projects/<int:workspace_id>/competitors', methods=['GET'])
+def analytics_competitor_intelligence_endpoint(workspace_id):
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    return jsonify({'project': row_to_dict(access.workspace),
+                    'intelligence': competitor_intelligence(workspace_id)})
+
 @prompts_bp.route('/api/analytics/projects/<int:workspace_id>/competitors', methods=['POST'])
 def create_analytics_competitor(workspace_id):
     access, error = require_workspace(workspace_id)
@@ -144,6 +161,41 @@ def create_analytics_competitor(workspace_id):
             competitors.c.id == result.inserted_primary_key[0]
         )).mappings().first()
     return jsonify({'competitor': row_to_dict(row)}), 201
+
+@prompts_bp.route('/api/analytics/projects/<int:workspace_id>/competitors/<int:competitor_id>', methods=['PATCH'])
+def update_analytics_competitor(workspace_id, competitor_id):
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    with engine.connect() as conn:
+        exists = conn.execute(select(competitors.c.id).where(
+            (competitors.c.id == competitor_id) & (competitors.c.workspace_id == workspace_id)
+        )).scalar_one_or_none()
+    if not exists:
+        return jsonify({'error': 'Competitor not found.'}), 404
+    data = request.get_json(silent=True) or {}
+    values = {}
+    if 'name' in data:
+        name = (data.get('name') or '').strip()
+        if not name or len(name) > 180:
+            return jsonify({'error': 'Enter a competitor name between 1 and 180 characters.'}), 400
+        values['name'] = name
+    if 'domain' in data:
+        domain_value = (data.get('domain') or '').strip()
+        domain = normalise_domain(domain_value) if domain_value else None
+        if domain_value and not domain:
+            return jsonify({'error': 'Enter a valid competitor domain or leave it blank.'}), 400
+        values['domains'] = [domain] if domain else []
+    if not values:
+        return jsonify({'error': 'Nothing to update.'}), 400
+    try:
+        with engine.begin() as conn:
+            conn.execute(update(competitors).where(competitors.c.id == competitor_id).values(**values))
+    except IntegrityError:
+        return jsonify({'error': 'That competitor is already tracked.'}), 409
+    with engine.connect() as conn:
+        row = conn.execute(select(competitors).where(competitors.c.id == competitor_id)).mappings().first()
+    return jsonify({'competitor': row_to_dict(row)})
 
 @prompts_bp.route('/api/analytics/projects/<int:workspace_id>/competitors/<int:competitor_id>', methods=['DELETE'])
 def delete_analytics_competitor(workspace_id, competitor_id):
@@ -218,6 +270,22 @@ def update_analytics_tracked_prompt(workspace_id, prompt_id):
         if len(prompt_text) < 8 or len(prompt_text) > 1000:
             return jsonify({'error': 'Enter a prompt between 8 and 1,000 characters.'}), 400
         values['prompt'] = prompt_text
+    if 'intent' in data:
+        intent = (data.get('intent') or 'Discovery').strip()[:80] or 'Discovery'
+        values['intent'] = intent
+    if 'topic_id' in data:
+        try:
+            topic_id = int(data['topic_id']) if data.get('topic_id') else None
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Choose a valid topic.'}), 400
+        if topic_id:
+            with engine.connect() as conn:
+                topic = conn.execute(select(analytics_topics.c.id).where(
+                    (analytics_topics.c.id == topic_id) & (analytics_topics.c.workspace_id == workspace_id)
+                )).scalar_one_or_none()
+            if not topic:
+                return jsonify({'error': 'The selected topic does not belong to this project.'}), 400
+        values['topic_id'] = topic_id
     with engine.begin() as conn:
         conn.execute(update(analytics_tracked_prompts).where(analytics_tracked_prompts.c.id == prompt_id).values(**values))
     return jsonify({'status': 'success'})
@@ -252,3 +320,103 @@ def update_analytics_scan_schedule(workspace_id):
                 workspace_id=workspace_id, last_run_at=None, created_at=now, **values,
             ))
     return jsonify({'tracking': analytics_tracking_payload(workspace_id)})
+
+@prompts_bp.route('/api/analytics/projects/<int:workspace_id>/engines', methods=['GET'])
+def analytics_engines_endpoint(workspace_id):
+    """Which platform-enabled engines this workspace has chosen to include.
+
+    Never returns credential/API-key data - onboarding's "choose engines"
+    step is a name + checkbox list only, per product decision.
+
+    An engine is only offered if its adapter is actually registered. The engines
+    table can carry a row that is enabled before its module ships - Microsoft
+    Copilot is exactly that today, with adapter_version 'pending' and no adapter,
+    because it needs a different Entra/delegated OAuth architecture. Without this
+    filter a customer could select it, and scanning.enabled_engines() would
+    silently skip it at execution time: a chosen engine that never runs and never
+    explains why. Offering only implemented engines keeps the catalog, the registry
+    and the adapters consistent.
+    """
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    with engine.connect() as conn:
+        engine_rows = [
+            row for row in conn.execute(
+                select(engines_table.c.id, engines_table.c.key,
+                       engines_table.c.display_name)
+                .where(engines_table.c.enabled).order_by(engines_table.c.id)
+            ).mappings().all()
+            if adapter_for(row['key']) is not None
+        ]
+        selection = {
+            row['engine_id']: row['enabled']
+            for row in conn.execute(
+                select(workspace_engines.c.engine_id, workspace_engines.c.enabled)
+                .where(workspace_engines.c.workspace_id == workspace_id)
+            ).mappings()
+        }
+    # No saved selection yet: every platform-enabled engine defaults to
+    # included, matching enabled_engines()'s own "no rows = all enabled" rule.
+    has_selection = bool(selection)
+    engines_payload = [
+        {
+            'id': row['id'], 'key': row['key'], 'display_name': row['display_name'],
+            'enabled': selection.get(row['id'], False) if has_selection else True,
+        }
+        for row in engine_rows
+    ]
+    return jsonify({'engines': engines_payload})
+
+@prompts_bp.route('/api/analytics/projects/<int:workspace_id>/engines', methods=['PUT'])
+def update_analytics_engines(workspace_id):
+    """Save this workspace's engine selection as a complete snapshot.
+
+    Writes one row per currently platform-enabled engine (enabled or not),
+    so a workspace that has saved a choice never has an ambiguous gap for
+    enabled_engines() to guess at.
+    """
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    try:
+        selected_ids = {int(value) for value in (data.get('engine_ids') or [])}
+    except (TypeError, ValueError):
+        return jsonify({'error': 'engine_ids must be a list of integers.'}), 400
+    now = datetime.utcnow()
+    with engine.begin() as conn:
+        # Same rule as the GET: only engines with a registered adapter are
+        # selectable, so a saved selection can never contain one that cannot run.
+        platform_engine_ids = [
+            row[0] for row in conn.execute(
+                select(engines_table.c.id, engines_table.c.key)
+                .where(engines_table.c.enabled)
+            ).all() if adapter_for(row[1]) is not None
+        ]
+        unavailable = selected_ids - set(platform_engine_ids)
+        if unavailable:
+            return jsonify({
+                'error': 'One or more selected engines are not available on this '
+                         'platform.',
+                'engine_ids': sorted(unavailable),
+            }), 400
+        existing = {
+            row['engine_id']: row['id']
+            for row in conn.execute(
+                select(workspace_engines.c.engine_id, workspace_engines.c.id)
+                .where(workspace_engines.c.workspace_id == workspace_id)
+            ).mappings()
+        }
+        for engine_id in platform_engine_ids:
+            row_enabled = engine_id in selected_ids
+            if engine_id in existing:
+                conn.execute(update(workspace_engines).where(
+                    workspace_engines.c.id == existing[engine_id]
+                ).values(enabled=row_enabled, updated_at=now))
+            else:
+                conn.execute(insert(workspace_engines).values(
+                    workspace_id=workspace_id, engine_id=engine_id, enabled=row_enabled,
+                    created_at=now, updated_at=now,
+                ))
+    return jsonify({'status': 'success'})

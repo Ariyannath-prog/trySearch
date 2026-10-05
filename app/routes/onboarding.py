@@ -19,18 +19,58 @@ from app.models import (
     analytics_tracked_prompts,
     brand_aliases,
     competitors as competitors_table,
+    engines as engines_table,
     workspaces,
 )
+from app.scanning import credential_for_engine
+from app.accounts import is_verified
+from app.onboarding_state import onboarding_state
 from app.tenancy import current_user_id, default_org_for_user, require_workspace
 from app.utils import normalise_domain, row_to_dict
 
 onboarding_bp = Blueprint('onboarding', __name__)
 
 
+
+def require_verified_user():
+    """Authenticated AND email-confirmed, or a response to return directly.
+
+    The page redirect in routes/pages.py is a convenience; this is the
+    enforcement. Onboarding creates a workspace and can start a paid scan, so an
+    unconfirmed address must not reach it even by calling the API directly.
+
+    Accounts that predate email verification are backfilled as verified by the
+    Phase C migration, so this gate never locks out an existing customer.
+    """
+    user_id, error = current_user_id()
+    if error:
+        return None, error
+    if not is_verified(user_id):
+        return None, (jsonify({
+            'error': 'Confirm your email address before setting up a project.',
+            'code': 'email_unverified',
+            'next': '/verify-email',
+        }), 403)
+    return user_id, None
+
+
+@onboarding_bp.route('/api/onboarding/state', methods=['GET'])
+def onboarding_state_endpoint():
+    """Where this user is in onboarding, so the wizard can resume.
+
+    Derived from existing workspace/prompt/engine/scan state - see
+    app/onboarding_state.py. Requires a confirmed address, like the rest of
+    onboarding.
+    """
+    user_id, error = require_verified_user()
+    if error:
+        return error
+    return jsonify(onboarding_state(user_id))
+
 @onboarding_bp.route('/api/onboarding/preview', methods=['POST'])
 def preview_onboarding_profile():
     """Generate a profile for review. Writes nothing, scans nothing."""
-    user_id, error = current_user_id()
+    user_id, error = require_verified_user()
     if error:
         return error
 
@@ -48,10 +88,17 @@ def preview_onboarding_profile():
             'fallback': 'manual',
         }), 502
 
+    with engine.connect() as conn:
+        gemini_row = conn.execute(
+            select(engines_table.c.id, engines_table.c.provider_id)
+            .where(engines_table.c.key == 'google_gemini')
+        ).mappings().first()
+        credential = credential_for_engine(conn, dict(gemini_row)) if gemini_row else None
+
     try:
         profile = onboarding_service.generate_profile(
             domain, onboarding_service.visible_text(html),
-            call_model=call_gemini_text,
+            call_model=lambda system, user: call_gemini_text(system, user, api_key=credential),
         )
     except (onboarding_service.OnboardingError, ProviderAPIError) as error:
         # Manual entry is the fallback, not a silent half-profile.
@@ -64,7 +111,7 @@ def preview_onboarding_profile():
 @onboarding_bp.route('/api/onboarding/approve', methods=['POST'])
 def approve_onboarding_profile():
     """Persist the reviewed profile. Still does not scan."""
-    user_id, error = current_user_id()
+    user_id, error = require_verified_user()
     if error:
         return error
 

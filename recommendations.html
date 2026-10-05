@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Recommendations — trySearch</title>
+<link rel="apple-touch-icon" href="/trysearch-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..600&family=Martian+Mono:wght@300;400;500;600&display=swap">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/shell.css">
+</head>
+<body data-view="recommendations">
+
+<div class="shell">
+  <aside class="rail">
+    <div class="railtop">
+      <button class="wordmark" onclick="location.href='/'">trySearch</button>
+      <div class="switchwrap">
+        <button class="switcher" id="switcher" type="button">
+          <span><b>Loading&hellip;</b><small></small></span>
+        </button>
+        <div class="switchmenu" id="switcher-menu"></div>
+      </div>
+    </div>
+    <nav class="anav" id="anav" aria-label="Sections"></nav>
+    <div class="railfoot">
+      <div class="who">
+        <div class="avatar" id="avatar">?</div>
+        <div><b id="who-name">&hellip;</b><small>Signed in</small></div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="iconbtn" data-theme-toggle title="Toggle theme">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3.4" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.6M8 12.9v1.6M14.5 8h-1.6M3.1 8H1.5M12.4 3.6l-1.1 1.1M4.7 11.3l-1.1 1.1M12.4 12.4l-1.1-1.1M4.7 4.7 3.6 3.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        </button>
+        <button class="iconbtn" id="logout-btn" title="Log out">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.5 2.5H3.8A1.3 1.3 0 0 0 2.5 3.8v8.4a1.3 1.3 0 0 0 1.3 1.3h2.7M11 11l3-3-3-3M14 8H6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+  <div style="min-width:0;display:flex;flex-direction:column">
+    <main class="page" id="views"></main>
+  </div>
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+
+<div class="scrim" id="drawer-scrim"></div>
+<div class="drawer" id="answer-drawer">
+  <div class="dh"><h4 id="drawer-title">Recommendation</h4><span class="spacer"></span>
+    <button class="iconbtn" id="drawer-close">&times;</button></div>
+  <div class="dbody" id="drawer-body"></div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/shell.js"></script>
+<script src="/static/js/pages/recommendations.js"></script>
+</body>
+</html>

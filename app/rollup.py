@@ -33,6 +33,13 @@ WEIGHT_CITATION_RATE = 0.2
 # PRD §13: on-demand runs are excluded, because they happen while someone is
 # actively optimising and would bias the series upward.
 SCHEDULED_RUN_TYPE = 'scheduled'
+ON_DEMAND_RUN_TYPE = 'on_demand'
+
+# The cohort for a *live* read of what a workspace has actually measured,
+# as opposed to the stored daily series. metrics_daily and the trend it
+# feeds stay scheduled-only; this exists so a scan someone just ran is not
+# invisible on their own dashboard until the next scheduled run.
+ALL_RUN_TYPES = (SCHEDULED_RUN_TYPE, ON_DEMAND_RUN_TYPE)
 
 
 def utc_today():
@@ -61,10 +68,16 @@ def visibility_score(mention_rate, position_score, citation_rate):
 
 
 def score_from_counts(*, total_answers, mentioned, reciprocal_rank_sum, cited,
-                      brand_mentions=None, competitor_mentions=None):
+                      brand_mentions=None, competitor_mentions=None,
+                      sentiment_index=None):
     """Turn raw counts into the PRD §13 metrics. No rounding happens here.
 
     reciprocal_rank_sum is the sum of 1/rank over *mentioned* answers only.
+    sentiment_index is computed by the caller (sentiment_index_from_counts()
+    below) rather than here, because it is not a ratio of total_answers the
+    way mention/citation rate are - its denominator is answers actually
+    classified, which can be fewer than total_answers whenever
+    classification hasn't caught up yet.
     """
     if not total_answers:
         # Empty denominator is NULL, never 0, everywhere - including the blend.
@@ -92,9 +105,22 @@ def score_from_counts(*, total_answers, mentioned, reciprocal_rank_sum, cited,
         'citation_rate': citation_rate,
         'visibility_score': visibility_score(mention_rate, position_score, citation_rate),
         'sov': sov,
-        # Sentiment is deliberately outside VS in v1 (PRD §13) and not yet extracted.
-        'sentiment_index': None,
+        # Sentiment is deliberately outside VS in v1 (PRD §13) - a companion
+        # index, not a weighted-in factor.
+        'sentiment_index': sentiment_index,
     }
+
+
+SENTIMENT_LABEL_SCORE = {'positive': 100.0, 'neutral': 50.0, 'negative': 0.0}
+
+
+def sentiment_index_from_labels(labels):
+    """Average of positive=100/neutral=50/negative=0 over *classified*
+    answers only. An unclassified answer (label is None/unrecognised) is
+    excluded from the denominator, never coerced to neutral - that would be
+    inventing a measurement for something that was never measured."""
+    scores = [SENTIMENT_LABEL_SCORE[label] for label in labels if label in SENTIMENT_LABEL_SCORE]
+    return (sum(scores) / len(scores)) if scores else None
 
 
 def blend(per_engine):
@@ -151,6 +177,7 @@ def collect_counts(workspace_id, day, conn):
             extractions.c.brand_mentioned,
             extractions.c.brand_rank,
             extractions.c.brand_cited,
+            extractions.c.sentiment,
         )
         .select_from(analytics_provider_answers)
         .join(analytics_prompt_scan_runs,
@@ -170,6 +197,7 @@ def collect_counts(workspace_id, day, conn):
     for row in rows:
         bucket = by_provider.setdefault(row['provider'], {
             'total_answers': 0, 'mentioned': 0, 'reciprocal_rank_sum': 0.0, 'cited': 0,
+            'sentiment_labels': [],
         })
         bucket['total_answers'] += 1
         if row['brand_mentioned']:
@@ -178,7 +206,77 @@ def collect_counts(workspace_id, day, conn):
                 bucket['reciprocal_rank_sum'] += 1.0 / row['brand_rank']
         if row['brand_cited']:
             bucket['cited'] += 1
+        bucket['sentiment_labels'].append(row['sentiment'])
     return by_provider
+
+
+def collect_counts_range(workspace_id, *, start_date=None, end_date=None,
+                         region=None, providers=None,
+                         run_types=(SCHEDULED_RUN_TYPE,), conn):
+    """collect_counts(), generalized from one day to a date range with an
+    optional region filter - for the global analytics filter system's
+    region case only. metrics_daily has no region column (collect_counts()
+    itself never grouped by region), so a region-filtered read cannot come
+    from the stored rollup and has to be computed live from the same
+    evidence collect_counts() already reads, with the identical join shape.
+    Grouped by (date, provider) so the caller can run score_from_counts()/
+    blend() - both unmodified - per day exactly as rollup_workspace_day()
+    does, just without persisting the result to metrics_daily.
+
+    `run_types` defaults to scheduled-only, so metrics_daily and every
+    existing caller keep the exact PRD §13 cohort. Passing a wider tuple
+    (see ALL_RUN_TYPES) is how the dashboard reads a just-finished
+    on-demand scan without that scan ever reaching the stored rollup.
+    """
+    conditions = (analytics_prompt_scan_runs.c.workspace_id == workspace_id)
+    if run_types:
+        conditions = conditions & (analytics_prompt_scan_runs.c.run_type.in_(tuple(run_types)))
+    if start_date:
+        conditions = conditions & (func.date(analytics_prompt_scan_runs.c.created_at) >= start_date)
+    if end_date:
+        conditions = conditions & (func.date(analytics_prompt_scan_runs.c.created_at) <= end_date)
+    if region:
+        conditions = conditions & (analytics_prompt_scan_runs.c.region == region)
+    if providers:
+        # Filter the column this function actually groups and attributes counts
+        # by. The run's own `provider` is one legacy label for the whole run, so
+        # filtering on it drops every answer a multi-engine run produced on the
+        # other engines - including the engine the user selected.
+        conditions = conditions & (analytics_provider_answers.c.provider.in_(providers))
+
+    rows = conn.execute(
+        select(
+            func.date(analytics_prompt_scan_runs.c.created_at).label('day'),
+            analytics_provider_answers.c.provider,
+            extractions.c.brand_mentioned,
+            extractions.c.brand_rank,
+            extractions.c.brand_cited,
+            extractions.c.sentiment,
+        )
+        .select_from(analytics_provider_answers)
+        .join(analytics_prompt_scan_runs,
+              analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+        .join(extractions,
+              (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+        .where(conditions)
+    ).mappings().all()
+
+    by_day_provider = {}
+    for row in rows:
+        key = (row['day'], row['provider'])
+        bucket = by_day_provider.setdefault(key, {
+            'total_answers': 0, 'mentioned': 0, 'reciprocal_rank_sum': 0.0, 'cited': 0,
+            'sentiment_labels': [],
+        })
+        bucket['total_answers'] += 1
+        if row['brand_mentioned']:
+            bucket['mentioned'] += 1
+            if row['brand_rank']:
+                bucket['reciprocal_rank_sum'] += 1.0 / row['brand_rank']
+        if row['brand_cited']:
+            bucket['cited'] += 1
+        bucket['sentiment_labels'].append(row['sentiment'])
+    return by_day_provider
 
 
 def upsert_row(workspace_id, day, engine_id, values, conn):
@@ -213,7 +311,9 @@ def rollup_workspace_day(workspace_id, day=None):
 
         per_engine = []
         for provider, counts in sorted(by_provider.items()):
-            metrics = score_from_counts(**counts)
+            sentiment_labels = counts.pop('sentiment_labels', [])
+            metrics = score_from_counts(
+                **counts, sentiment_index=sentiment_index_from_labels(sentiment_labels))
             per_engine.append(metrics)
             resolved = engine_id_for_provider(provider, conn)
             if resolved is not None:
@@ -225,28 +325,43 @@ def rollup_workspace_day(workspace_id, day=None):
         return blended
 
 
-def latest_metrics(workspace_id, *, engine_id=None, limit=90):
-    """Read path for dashboards. Reads metrics_daily and nothing else."""
+def latest_metrics(workspace_id, *, engine_id=None, limit=90, start_date=None, end_date=None):
+    """Read path for dashboards. Reads metrics_daily and nothing else.
+
+    start_date/end_date are an additional, purely additive date filter (the
+    global analytics filter system) - omitted, behavior is identical to
+    before it existed.
+    """
     with engine.connect() as conn:
+        conditions = (
+            (metrics_daily.c.workspace_id == workspace_id)
+            & (metrics_daily.c.engine_id.is_(None) if engine_id is None
+               else metrics_daily.c.engine_id == engine_id)
+        )
+        if start_date:
+            conditions = conditions & (metrics_daily.c.date >= start_date)
+        if end_date:
+            conditions = conditions & (metrics_daily.c.date <= end_date)
         rows = conn.execute(
             select(metrics_daily)
-            .where(
-                (metrics_daily.c.workspace_id == workspace_id)
-                & (metrics_daily.c.engine_id.is_(None) if engine_id is None
-                   else metrics_daily.c.engine_id == engine_id)
-            )
+            .where(conditions)
             .order_by(metrics_daily.c.date.desc())
             .limit(limit)
         ).mappings().all()
     return [dict(row) for row in rows]
 
 
-def latest_metrics_all_engines(workspace_id, *, limit=90):
+def latest_metrics_all_engines(workspace_id, *, limit=90, start_date=None, end_date=None):
     """Every metrics_daily row for the workspace, blended and per-engine."""
     with engine.connect() as conn:
+        conditions = (metrics_daily.c.workspace_id == workspace_id)
+        if start_date:
+            conditions = conditions & (metrics_daily.c.date >= start_date)
+        if end_date:
+            conditions = conditions & (metrics_daily.c.date <= end_date)
         rows = conn.execute(
             select(metrics_daily)
-            .where(metrics_daily.c.workspace_id == workspace_id)
+            .where(conditions)
             .order_by(metrics_daily.c.date.desc())
             .limit(limit)
         ).mappings().all()

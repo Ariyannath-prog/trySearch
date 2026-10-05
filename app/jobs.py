@@ -21,11 +21,16 @@ from sqlalchemy import (
     text,
 )
 
+from app.config import SENTIMENT_BATCH_SIZE
+from app.costs import record_usage
 from app.crawler.crawl import crawl_website
 from app.db import engine
-from app.models import analytics_audit_findings, analytics_audit_jobs, analytics_audit_pages, analytics_site_audits, analytics_sitemaps, memberships, workspaces
+from app.http_client import ProviderAPIError
+from app.models import analytics_audit_findings, analytics_audit_jobs, analytics_audit_pages, analytics_prompt_scan_runs, analytics_provider_answers, analytics_site_audits, analytics_sitemaps, extractions, memberships, workspaces
 from app.rag.answers import generate_standard_rag_insights
 from app.rag.index import index_rag_page, rag_index_summary
+from app.rollup import SCHEDULED_RUN_TYPE
+from app.sentiment import classify_answer_sentiment
 from app.utils import row_to_dict
 
 def create_analytics_job(workspace, job_type, provider=None, run_type='scheduled'):
@@ -200,6 +205,90 @@ def run_site_audit_job(job_id):
             job_id, status='succeeded' if crawl['status'] != 'failed' else 'failed_terminal',
             progress=100, completed_items=len(crawl['pages']), total_items=len(crawl['pages']),
             error=None if crawl['status'] != 'failed' else crawl['summary'], completed_at=datetime.utcnow(),
+        )
+    except Exception as error:  # A durable status is more useful than a dropped worker traceback.
+        update_analytics_job(job_id, status='failed_retryable', error=str(error)[:2000], completed_at=datetime.utcnow())
+
+
+def run_sentiment_classification_job(job_id):
+    """Claim and execute one durable sentiment-classification job.
+
+    Classifies up to SENTIMENT_BATCH_SIZE scheduled-run answers where the
+    brand was mentioned and the current extraction has no sentiment yet - the
+    only answers a re-run ever touches, so retrying costs nothing extra for
+    ones already done. Each result is written onto the *existing* current
+    extraction row (an UPDATE, not a new versioned row): sentiment does not
+    change the mention/rank/citation facts that versioning exists to protect,
+    the same reasoning categorise_sources() already applies to
+    analytics_answer_sources.category.
+    """
+    with engine.begin() as conn:
+        job = conn.execute(select(analytics_audit_jobs).where(
+            analytics_audit_jobs.c.id == job_id
+        )).mappings().first()
+        if not job or job['status'] not in {'queued', 'failed_retryable'}:
+            return
+        claimed = conn.execute(update(analytics_audit_jobs).where(
+            (analytics_audit_jobs.c.id == job_id) &
+            (analytics_audit_jobs.c.status.in_(['queued', 'failed_retryable']))
+        ).values(status='running', started_at=datetime.utcnow(), completed_at=None, error=None))
+        if claimed.rowcount != 1:
+            return
+        project = conn.execute(select(workspaces).where(
+            workspaces.c.id == job['workspace_id']
+        )).mappings().first()
+        org_id = project['org_id'] if project else None
+
+    if not project:
+        update_analytics_job(job_id, status='failed_terminal', error='Project no longer exists.', completed_at=datetime.utcnow())
+        return
+
+    try:
+        with engine.connect() as conn:
+            candidates = conn.execute(
+                select(analytics_provider_answers.c.id, analytics_provider_answers.c.answer_text,
+                       extractions.c.id.label('extraction_id'))
+                .select_from(analytics_provider_answers)
+                .join(analytics_prompt_scan_runs,
+                      analytics_prompt_scan_runs.c.id == analytics_provider_answers.c.scan_run_id)
+                .join(extractions,
+                      (extractions.c.answer_id == analytics_provider_answers.c.id) & extractions.c.is_current)
+                .where(
+                    (analytics_prompt_scan_runs.c.workspace_id == project['id'])
+                    & (analytics_prompt_scan_runs.c.run_type == SCHEDULED_RUN_TYPE)
+                    & (extractions.c.brand_mentioned.is_(True))
+                    & (extractions.c.sentiment.is_(None))
+                )
+                .order_by(analytics_provider_answers.c.created_at)
+                .limit(SENTIMENT_BATCH_SIZE)
+            ).mappings().all()
+
+        total = len(candidates)
+        classified = 0
+        for index, row in enumerate(candidates):
+            update_analytics_job(job_id, completed_items=index, total_items=total,
+                                 progress=min(99, round(index / max(total, 1) * 100)))
+            try:
+                result = classify_answer_sentiment(row['answer_text'], project['brand_name'])
+            except ProviderAPIError:
+                # Leave this one NULL - a malformed model response is never
+                # coerced into a guessed label. The next run retries it.
+                continue
+            if result is None:
+                # Open model not configured - nothing else to try this run.
+                break
+            with engine.begin() as conn:
+                conn.execute(update(extractions).where(extractions.c.id == row['extraction_id']).values(
+                    sentiment=result['sentiment'], sentiment_conf=result['confidence'],
+                ))
+            if org_id is not None:
+                record_usage(workspace_id=project['id'], org_id=org_id,
+                             category='content', provider='OpenModel')
+            classified += 1
+
+        update_analytics_job(
+            job_id, status='succeeded', progress=100, completed_items=classified,
+            total_items=total, error=None, completed_at=datetime.utcnow(),
         )
     except Exception as error:  # A durable status is more useful than a dropped worker traceback.
         update_analytics_job(job_id, status='failed_retryable', error=str(error)[:2000], completed_at=datetime.utcnow())

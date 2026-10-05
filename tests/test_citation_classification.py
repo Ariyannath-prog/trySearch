@@ -4,7 +4,7 @@ import contextlib
 import os
 import pathlib
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 
 os.environ['APP_ENV'] = 'development'
 os.environ['SECRET_KEY'] = 'citation-test-secret'
@@ -276,6 +276,116 @@ class TopDomainsQueryTests(unittest.TestCase):
         with count_queries() as seen:
             metrics.competitor_citation_gaps(self.workspace_id)
         self.assertEqual(len(seen), 1, f'expected one query, saw {len(seen)}')
+
+
+class CitationListingTests(unittest.TestCase):
+    """app/metrics.py::citation_listing - the Citations page's per-URL table.
+
+    citation_domain_rollup groups by domain; this groups by URL and carries
+    engine/prompt/first-last-seen attribution, which the per-URL table and
+    its evidence drawer need and nothing else in the product computes.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.workspace_id = create_workspace(user_id=97030, domain='acme2.example',
+                                            brand_name='Acme2')
+        cls.t1 = datetime(2026, 1, 1, 12, 0, 0)
+        cls.t2 = cls.t1 + timedelta(days=3)
+        with engine.begin() as conn:
+            prompt_id = conn.execute(insert(analytics_tracked_prompts).values(
+                workspace_id=cls.workspace_id, topic_id=None, prompt='best crm for startups',
+                intent='Discovery', active=True, created_at=cls.t1, updated_at=cls.t1,
+            )).inserted_primary_key[0]
+            scan_id = conn.execute(insert(analytics_prompt_scan_runs).values(
+                workspace_id=cls.workspace_id, job_id=None, provider='Perplexity', model='m',
+                region=None, competitor_snapshot='[]', status='succeeded', run_type='scheduled',
+                prompt_count=2, completed_count=2, mention_rate=None, citation_rate=None,
+                source_presence_rate=None, share_of_voice=None, recommendation_summary=None,
+                error=None, created_at=cls.t1, completed_at=cls.t1,
+            )).inserted_primary_key[0]
+            # First answer: Perplexity, cites the workspace's own domain and g2.com.
+            answer1 = conn.execute(insert(analytics_provider_answers).values(
+                scan_run_id=scan_id, prompt_id=prompt_id, prompt_text='best crm for startups',
+                prompt_intent='Discovery', topic_name=None, provider='Perplexity', model='m',
+                status='ok', search_request_id=None, answer_request_id=None, answer_text='text',
+                raw_response='{}', latency_ms=1, error=None, created_at=cls.t1, completed_at=cls.t1,
+            )).inserted_primary_key[0]
+            conn.execute(insert(analytics_answer_sources).values(
+                answer_id=answer1, rank=1, source_kind='search_result', title='t',
+                url='https://acme2.example/a', domain='acme2.example', snippet=None,
+                published_at=None, category='own'))
+            conn.execute(insert(analytics_answer_sources).values(
+                answer_id=answer1, rank=2, source_kind='search_result', title='t',
+                url='https://g2.com/x', domain='g2.com', snippet=None,
+                published_at=None, category='editorial'))
+            # Second answer, three days later: OpenAI, cites g2.com again (same URL).
+            answer2 = conn.execute(insert(analytics_provider_answers).values(
+                scan_run_id=scan_id, prompt_id=prompt_id, prompt_text='best crm for startups',
+                prompt_intent='Discovery', topic_name=None, provider='OpenAI', model='m',
+                status='ok', search_request_id=None, answer_request_id=None, answer_text='text',
+                raw_response='{}', latency_ms=1, error=None, created_at=cls.t2, completed_at=cls.t2,
+            )).inserted_primary_key[0]
+            conn.execute(insert(analytics_answer_sources).values(
+                answer_id=answer2, rank=1, source_kind='search_result', title='t',
+                url='https://g2.com/x', domain='g2.com', snippet=None,
+                published_at=None, category='editorial'))
+
+    def test_is_a_single_query(self):
+        with count_queries() as seen:
+            metrics.citation_listing(self.workspace_id)
+        self.assertEqual(len(seen), 1, f'expected one SELECT, saw {len(seen)}')
+
+    def test_groups_repeated_citations_of_the_same_url(self):
+        listing = {row['url']: row for row in metrics.citation_listing(self.workspace_id)}
+        self.assertEqual(set(listing.keys()),
+                         {'https://acme2.example/a', 'https://g2.com/x'})
+        g2 = listing['https://g2.com/x']
+        self.assertEqual(g2['citation_count'], 2)
+        self.assertEqual(g2['engines'], ['OpenAI', 'Perplexity'])
+        self.assertEqual(g2['bucket'], 'third_party')
+        self.assertEqual(len(g2['occurrences']), 2)
+        self.assertIn('best crm for startups', g2['prompts'])
+
+    def test_first_and_last_seen_span_the_two_occurrences(self):
+        listing = {row['url']: row for row in metrics.citation_listing(self.workspace_id)}
+        g2 = listing['https://g2.com/x']
+        self.assertEqual(g2['first_seen'], self.t1.isoformat() + 'Z')
+        self.assertEqual(g2['last_seen'], self.t2.isoformat() + 'Z')
+
+    def test_own_domain_bucket_is_own_not_third_party(self):
+        listing = {row['url']: row for row in metrics.citation_listing(self.workspace_id)}
+        own = listing['https://acme2.example/a']
+        self.assertEqual(own['bucket'], 'own')
+        self.assertEqual(own['citation_count'], 1)
+
+    def test_sorted_by_citation_count_descending(self):
+        listing = metrics.citation_listing(self.workspace_id)
+        counts = [row['citation_count'] for row in listing]
+        self.assertEqual(counts, sorted(counts, reverse=True))
+
+
+class CitationsEndpointTests(unittest.TestCase):
+    """GET .../citations now also returns the per-URL listing, alongside the
+    pre-existing domain rollup and competitor gaps - one endpoint, three
+    grains of the same stored evidence."""
+
+    def test_response_includes_the_per_url_listing(self):
+        with engine.begin() as conn:
+            user_id = conn.execute(insert(users).values(
+                username='endpoint_cite_user', email='endpointcite@example.com',
+                password_hash=generate_password_hash('endpoint-cite-pw-1'),
+                created_at=datetime.utcnow())).inserted_primary_key[0]
+        workspace_id = create_workspace(user_id=user_id, domain='endpointcite.example',
+                                        brand_name='EndpointCite')
+        with server_pg.app.test_client() as client:
+            client.post('/api/login', json={'username': 'endpoint_cite_user',
+                                            'password': 'endpoint-cite-pw-1'})
+            response = client.get(f'/api/analytics/projects/{workspace_id}/citations')
+        self.assertEqual(response.status_code, 200)
+        body = response.get_json()
+        self.assertIn('citations', body)
+        self.assertEqual(body['citations'], [])
 
 
 if __name__ == '__main__':

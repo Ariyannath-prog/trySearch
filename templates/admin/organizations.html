@@ -1,0 +1,235 @@
+{% extends "admin/layout.html" %}
+{% block title %}Organizations · trySearch Admin{% endblock %}
+
+{% block head %}
+<style>
+  .org-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
+  .org-toolbar input{flex:1;min-width:240px;background:#0f0c14;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 13px;outline:none}
+  .org-toolbar input:focus{border-color:#5d5068}
+  .btn{border:1px solid var(--border);background:#17131d;color:var(--text);border-radius:10px;padding:10px 14px;cursor:pointer;font:inherit;font-size:12px}
+  .btn:hover{border-color:#5d5068}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px}
+  .org-table-wrap{overflow:auto}
+  .org-table{width:100%;border-collapse:collapse;min-width:760px}
+  .org-table th,.org-table td{padding:13px 12px;border-bottom:1px solid var(--border);text-align:left;font-size:12px}
+  .org-table th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+  .org-table tbody tr{cursor:pointer}
+  .org-table tbody tr:hover{background:#17131d}
+  .org-name{font-weight:750}
+  .muted{color:var(--muted)}
+  .pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#211b28;color:#d8cddd;font-size:10px}
+  .detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .detail-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px}
+  .detail-card h3{margin:0 0 12px;font-size:14px}
+  .meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .meta-item{padding:10px;border:1px solid var(--border);border-radius:10px;background:#121018}
+  .meta-item .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .meta-item .v{margin-top:5px;font-size:12px}
+  .detail-list{display:grid;gap:8px}
+  .detail-row{display:flex;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border);border-radius:10px;background:#121018}
+  .error{padding:12px;border:1px solid rgba(255,105,127,.4);background:rgba(255,105,127,.08);color:#ffd0d8;border-radius:10px;font-size:12px}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+  @media(max-width:800px){.detail-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top">
+  <div>
+    <div class="eyebrow">Administration</div>
+    <h1>Organizations</h1>
+    <div class="sub">Manage platform organizations and inspect their members, workspaces, and billing metadata.</div>
+  </div>
+</div>
+
+<div class="org-toolbar">
+  <input id="orgSearch" type="search" placeholder="Search organization or Stripe customer ID">
+  <button class="btn" id="refreshBtn">Refresh</button>
+</div>
+
+<div id="errorBox" class="error" style="display:none"></div>
+
+<div class="panel">
+  <div class="org-table-wrap">
+    <table class="org-table">
+      <thead>
+        <tr>
+          <th>Organization</th>
+          <th>Members</th>
+          <th>Workspaces</th>
+          <th>Plan</th>
+          <th>Cost ceiling</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="orgRows">
+        <tr><td colspan="6" class="empty">Loading organizations…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section" id="detailSection" style="display:none">
+  <div class="top">
+    <div>
+      <div class="eyebrow">Organization detail</div>
+      <h2 id="detailTitle">Organization</h2>
+      <div class="sub" id="detailSubtitle"></div>
+    </div>
+    <button class="btn" id="closeDetail">Close</button>
+  </div>
+
+  <div id="detailError" class="error" style="display:none"></div>
+
+  <div class="detail-grid">
+    <div class="detail-card">
+      <h3>Organization metadata</h3>
+      <div class="meta-grid" id="metaGrid"></div>
+    </div>
+    <div class="detail-card">
+      <h3>Members</h3>
+      <div class="detail-list" id="memberList"></div>
+    </div>
+    <div class="detail-card">
+      <h3>Workspaces</h3>
+      <div class="detail-list" id="workspaceList"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const rows = document.getElementById('orgRows');
+  const search = document.getElementById('orgSearch');
+  const errorBox = document.getElementById('errorBox');
+  const detailSection = document.getElementById('detailSection');
+  const detailTitle = document.getElementById('detailTitle');
+  const detailSubtitle = document.getElementById('detailSubtitle');
+  const detailError = document.getElementById('detailError');
+  const metaGrid = document.getElementById('metaGrid');
+  const memberList = document.getElementById('memberList');
+  const workspaceList = document.getElementById('workspaceList');
+
+  const esc = (value) => String(value ?? '')
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#039;");
+
+  const dateText = (value) => value ? new Date(value).toLocaleString() : '—';
+
+  async function loadOrganizations(){
+    errorBox.style.display = 'none';
+    rows.innerHTML = '<tr><td colspan="6" class="empty">Loading organizations…</td></tr>';
+
+    try{
+      const q = encodeURIComponent(search.value.trim());
+      const res = await fetch('/api/admin/organizations?search=' + q, {credentials:'same-origin'});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load organizations.');
+
+      if(!data.organizations.length){
+        rows.innerHTML = '<tr><td colspan="6" class="empty">No organizations found.</td></tr>';
+        return;
+      }
+
+      rows.innerHTML = data.organizations.map(org => `
+        <tr data-id="${org.id}">
+          <td><div class="org-name">${esc(org.name)}</div><div class="muted">#${org.id}</div></td>
+          <td>${org.member_count}</td>
+          <td>${org.workspace_count}</td>
+          <td><span class="pill">${org.plan_id === null ? 'Unassigned' : 'Plan #' + org.plan_id}</span></td>
+          <td>${org.monthly_cost_ceiling_usd === null ? 'Default' : '$' + Number(org.monthly_cost_ceiling_usd).toFixed(2)}</td>
+          <td>${dateText(org.created_at)}</td>
+        </tr>
+      `).join('');
+
+      rows.querySelectorAll('tr[data-id]').forEach(row => {
+        row.addEventListener('click', () => loadDetail(Number(row.dataset.id)));
+      });
+    }catch(err){
+      rows.innerHTML = '';
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
+    }
+  }
+
+  async function loadDetail(id){
+    detailError.style.display = 'none';
+    detailSection.style.display = 'block';
+    detailTitle.textContent = 'Loading…';
+    detailSubtitle.textContent = '';
+    metaGrid.innerHTML = '';
+    memberList.innerHTML = '<div class="muted">Loading…</div>';
+    workspaceList.innerHTML = '<div class="muted">Loading…</div>';
+    detailSection.scrollIntoView({behavior:'smooth',block:'start'});
+
+    try{
+      const res = await fetch('/api/admin/organizations/' + id, {credentials:'same-origin'});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load organization.');
+
+      const org = data.organization;
+      detailTitle.textContent = org.name;
+      detailSubtitle.textContent = 'Organization #' + org.id;
+
+      metaGrid.innerHTML = [
+        ['Organization ID', org.id],
+        ['Plan', org.plan_id === null ? 'Unassigned' : 'Plan #' + org.plan_id],
+        ['Stripe customer', org.stripe_customer_id || 'Not connected'],
+        ['Monthly ceiling', org.monthly_cost_ceiling_usd === null ? 'Default' : '$' + Number(org.monthly_cost_ceiling_usd).toFixed(2)],
+        ['Created', dateText(org.created_at)]
+      ].map(([k,v]) => `
+        <div class="meta-item">
+          <div class="k">${esc(k)}</div>
+          <div class="v">${esc(v)}</div>
+        </div>
+      `).join('');
+
+      memberList.innerHTML = data.members.length ? data.members.map(m => `
+        <div class="detail-row">
+          <div>
+            <strong>${esc(m.username)}</strong>
+            <div class="muted">${esc(m.email)}</div>
+          </div>
+          <div style="text-align:right">
+            <div><span class="pill">${esc(m.role)}</span></div>
+            <div class="muted" style="margin-top:4px">${m.is_active ? 'Active' : 'Disabled'}</div>
+          </div>
+        </div>
+      `).join('') : '<div class="empty">No members.</div>';
+
+      workspaceList.innerHTML = data.workspaces.length ? data.workspaces.map(w => `
+        <div class="detail-row">
+          <div>
+            <strong>${esc(w.brand_name)}</strong>
+            <div class="muted">${esc(w.domain || w.website_url || 'No domain configured')}</div>
+          </div>
+          <div style="text-align:right">
+            <div><span class="pill">${esc(w.status)}</span></div>
+            <div class="muted" style="margin-top:4px">${esc(w.kind)} · ${esc(w.geo)}</div>
+          </div>
+        </div>
+      `).join('') : '<div class="empty">No workspaces.</div>';
+
+    }catch(err){
+      detailError.textContent = err.message;
+      detailError.style.display = 'block';
+    }
+  }
+
+  document.getElementById('refreshBtn').addEventListener('click', loadOrganizations);
+  document.getElementById('closeDetail').addEventListener('click', () => {
+    detailSection.style.display = 'none';
+  });
+  search.addEventListener('keydown', (event) => {
+    if(event.key === 'Enter') loadOrganizations();
+  });
+
+  loadOrganizations();
+})();
+</script>
+{% endblock %}

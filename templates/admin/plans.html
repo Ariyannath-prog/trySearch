@@ -1,0 +1,632 @@
+{% extends "admin/layout.html" %}
+{% block title %}Plans · trySearch Admin{% endblock %}
+
+{% block head %}
+<style>
+  .plan-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0;align-items:center}
+  .plan-toolbar input,.plan-toolbar select{background:#0f0c14;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 13px;outline:none;font:inherit;font-size:12px}
+  .plan-toolbar input[type=search]{flex:1;min-width:220px}
+  .plan-toolbar label.check{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+  .btn{border:1px solid var(--border);background:#17131d;color:var(--text);border-radius:10px;padding:10px 14px;cursor:pointer;font:inherit;font-size:12px}
+  .btn:hover{border-color:#5d5068}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.danger{border-color:rgba(255,105,127,.35);color:#ffabb8}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px}
+  .plan-table-wrap{overflow:auto}
+  .plan-table{width:100%;border-collapse:collapse;min-width:960px}
+  .plan-table th,.plan-table td{padding:13px 12px;border-bottom:1px solid var(--border);text-align:left;font-size:12px}
+  .plan-table th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+  .plan-table tbody tr{cursor:pointer}
+  .plan-table tbody tr:hover{background:#17131d}
+  .plan-name{font-weight:750}
+  .muted{color:var(--muted)}
+  .pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#211b28;color:#d8cddd;font-size:10px}
+  .pill.good{background:rgba(70,210,138,.1);color:#7ee8ae}
+  .pill.bad{background:rgba(255,105,127,.1);color:#ffabb8}
+  .pill.warn{background:rgba(237,59,120,.1);color:#ff91ba}
+  .detail-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:14px}
+  .detail-card h3{margin:0 0 4px;font-size:14px}
+  .detail-card .hint{color:var(--muted);font-size:11px;margin:0 0 12px;line-height:1.55}
+  .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .field input,.field select,.field textarea{background:#0f0c14;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;font-size:12px;outline:none}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:#5d5068}
+  .field textarea{min-height:62px;resize:vertical}
+  .field .note{font-size:10px;color:var(--muted)}
+  .field.span2{grid-column:1/-1}
+  .acct-types{display:flex;gap:14px;flex-wrap:wrap}
+  .acct-types label{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text);text-transform:none;letter-spacing:0}
+  .ent-table{width:100%;border-collapse:collapse}
+  .ent-table th,.ent-table td{padding:9px 8px;border-bottom:1px solid var(--border);text-align:left;font-size:12px;vertical-align:top}
+  .ent-table th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+  .ent-key{font-weight:700}
+  .ent-desc{color:var(--muted);font-size:10px;margin-top:3px;max-width:380px;line-height:1.5}
+  .ent-table input[type=number],.ent-table input[type=text],.ent-table select{width:100%;max-width:230px;background:#0f0c14;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 9px;font:inherit;font-size:12px;outline:none}
+  .ent-inherited{font-size:10px;color:var(--muted);margin-top:4px}
+  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .error{padding:12px;border:1px solid rgba(255,105,127,.4);background:rgba(255,105,127,.08);color:#ffd0d8;border-radius:10px;font-size:12px;margin-bottom:12px}
+  .ok{padding:12px;border:1px solid rgba(70,210,138,.4);background:rgba(70,210,138,.08);color:#b6f2d2;border-radius:10px;font-size:12px;margin-bottom:12px}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+  .warnbar{padding:11px 13px;border:1px solid rgba(237,59,120,.3);background:rgba(237,59,120,.07);color:#ffc2d9;border-radius:10px;font-size:11px;line-height:1.6;margin:14px 0}
+  @media(max-width:860px){.form-grid{grid-template-columns:1fr}.ent-table th:nth-child(3),.ent-table td:nth-child(3){display:none}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top">
+  <div>
+    <div class="eyebrow">Commercial</div>
+    <h1>Plans</h1>
+    <div class="sub">Plans and their entitlements are the source of truth for what a
+      customer may do. Nothing here is hardcoded in the product: onboarding and the
+      pricing surfaces read whatever is active, and the backend enforces the limits.
+      A new plan starts as a draft and stays invisible to customers until activated.</div>
+  </div>
+  <button class="btn primary" id="newPlanBtn">New plan</button>
+</div>
+
+<div class="plan-toolbar">
+  <input id="planSearch" type="search" placeholder="Search name or slug">
+  <select id="planStatus">
+    <option value="all">All statuses</option>
+    <option value="active">Active</option>
+    <option value="draft">Draft</option>
+    <option value="archived">Archived</option>
+  </select>
+  <label class="check"><input type="checkbox" id="includeArchived"> Include archived</label>
+  <button class="btn" id="refreshBtn">Refresh</button>
+</div>
+
+<div id="errorBox" class="error" style="display:none"></div>
+<div id="okBox" class="ok" style="display:none"></div>
+
+<div class="panel">
+  <div class="plan-table-wrap">
+    <table class="plan-table">
+      <thead>
+        <tr>
+          <th>Plan</th>
+          <th>Status</th>
+          <th>Monthly</th>
+          <th>Trial</th>
+          <th>Account types</th>
+          <th>Organizations</th>
+          <th>Order</th>
+        </tr>
+      </thead>
+      <tbody id="planRows">
+        <tr><td colspan="7" class="empty">Loading plans…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section" id="editorSection" style="display:none">
+  <div class="top">
+    <div>
+      <div class="eyebrow" id="editorEyebrow">Plan</div>
+      <h2 id="editorTitle">Plan</h2>
+      <div class="sub" id="editorSubtitle"></div>
+    </div>
+    <button class="btn" id="closeEditor">Close</button>
+  </div>
+
+  <div id="editorError" class="error" style="display:none"></div>
+  <div id="editorOk" class="ok" style="display:none"></div>
+  <div id="archivedWarn" class="warnbar" style="display:none">
+    This plan is archived. Archived plans cannot be edited or sold. Restore it first —
+    it comes back as a draft, never straight to active.
+  </div>
+
+  <div class="detail-card">
+    <h3>Commercial terms</h3>
+    <p class="hint">An active plan needs a monthly price and at least one account type.
+      Annual pricing is stored but not offered to customers in this phase.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label for="f_name">Name</label>
+        <input id="f_name" type="text" maxlength="160" placeholder="Name shown to customers">
+      </div>
+      <div class="field">
+        <label for="f_slug">Slug</label>
+        <input id="f_slug" type="text" placeholder="auto-generated from the name">
+        <span class="note">Lowercase identifier used by the API. Changing it may break saved links.</span>
+      </div>
+      <div class="field span2">
+        <label for="f_description">Description</label>
+        <textarea id="f_description" placeholder="Shown to customers on the plan picker."></textarea>
+      </div>
+      <div class="field">
+        <label for="f_price_monthly">Monthly price</label>
+        <input id="f_price_monthly" type="text" inputmode="decimal" placeholder="0.00">
+        <span class="note">Up to two decimal places. Blank clears it.</span>
+      </div>
+      <div class="field">
+        <label for="f_currency">Currency</label>
+        <input id="f_currency" type="text" maxlength="3" placeholder="USD">
+      </div>
+      <div class="field">
+        <label for="f_price_annual">Annual price (stored, not sold yet)</label>
+        <input id="f_price_annual" type="text" inputmode="decimal" placeholder="optional">
+      </div>
+      <div class="field">
+        <label for="f_billing_interval">Billing interval</label>
+        <select id="f_billing_interval"></select>
+      </div>
+      <div class="field">
+        <label for="f_trial_days">Trial days</label>
+        <input id="f_trial_days" type="number" min="0" step="1" value="0">
+        <span class="note">0 means no trial.</span>
+      </div>
+      <div class="field">
+        <label for="f_display_order">Display order</label>
+        <input id="f_display_order" type="number" min="0" step="1" value="0">
+      </div>
+      <div class="field">
+        <label for="f_ceiling">Monthly cost ceiling (USD, internal)</label>
+        <input id="f_ceiling" type="text" inputmode="decimal" placeholder="optional">
+        <span class="note">Infrastructure spend cap. Never shown to customers.</span>
+      </div>
+      <div class="field">
+        <label>Account types allowed</label>
+        <div class="acct-types">
+          <label><input type="checkbox" id="f_acct_brand" value="brand"> Brand</label>
+          <label><input type="checkbox" id="f_acct_agency" value="agency"> Agency</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="detail-card">
+    <h3>Entitlements</h3>
+    <p class="hint">Only keys the backend actually enforces are listed — the vocabulary
+      comes from the entitlement registry, so a value saved here is a value the
+      application reads. Leave a row on <em>Inherit default</em> to let the platform
+      default apply. <code>-1</code> means unlimited for numeric limits.</p>
+    <table class="ent-table">
+      <thead>
+        <tr><th>Entitlement</th><th>Value</th><th>Default</th></tr>
+      </thead>
+      <tbody id="entRows">
+        <tr><td colspan="3" class="empty">Loading entitlement keys…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="detail-actions">
+    <button class="btn primary" id="saveBtn">Save plan</button>
+    <button class="btn" id="toggleActiveBtn" style="display:none"></button>
+    <button class="btn danger" id="archiveBtn" style="display:none">Archive</button>
+    <button class="btn" id="restoreBtn" style="display:none">Restore</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const rows = document.getElementById('planRows');
+  const search = document.getElementById('planSearch');
+  const statusFilter = document.getElementById('planStatus');
+  const includeArchived = document.getElementById('includeArchived');
+  const errorBox = document.getElementById('errorBox');
+  const okBox = document.getElementById('okBox');
+
+  const editorSection = document.getElementById('editorSection');
+  const editorEyebrow = document.getElementById('editorEyebrow');
+  const editorTitle = document.getElementById('editorTitle');
+  const editorSubtitle = document.getElementById('editorSubtitle');
+  const editorError = document.getElementById('editorError');
+  const editorOk = document.getElementById('editorOk');
+  const archivedWarn = document.getElementById('archivedWarn');
+  const entRows = document.getElementById('entRows');
+
+  const saveBtn = document.getElementById('saveBtn');
+  const toggleActiveBtn = document.getElementById('toggleActiveBtn');
+  const archiveBtn = document.getElementById('archiveBtn');
+  const restoreBtn = document.getElementById('restoreBtn');
+
+  const esc = (value) => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+  const pill = (text, cls='') => '<span class="pill ' + cls + '">' + esc(text) + '</span>';
+
+  /* Registry-driven. The backend is the only authority on which entitlement keys
+     exist and what type each one is; this page renders whatever it is told and
+     never invents a key. */
+  let registry = {keys: [], value_types: [], scan_frequencies: [], unlimited: -1};
+  let allPlans = [];
+  let current = null;   // the plan being edited, or null for a new draft
+
+  function flash(el, message){
+    el.textContent = message;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 4000);
+  }
+  function showError(el, message){
+    el.textContent = message;
+    el.style.display = 'block';
+  }
+  function hide(...els){ els.forEach(el => { el.style.display = 'none'; }); }
+
+  function planStatusPill(plan){
+    if(plan.archived_at) return pill('Archived','bad');
+    return plan.active ? pill('Active','good') : pill('Draft','warn');
+  }
+
+  function money(value, currency){
+    if(value === null || value === undefined || value === '') return '—';
+    return esc(currency || 'USD') + ' ' + esc(value);
+  }
+
+  async function loadRegistry(){
+    const res = await adminFetch('/api/admin/entitlement-keys');
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || 'Failed to load entitlement keys.');
+    registry = data;
+
+    const sel = document.getElementById('f_billing_interval');
+    sel.innerHTML = ['monthly','annual']
+      .map(v => '<option value="' + v + '">' + v + '</option>').join('');
+  }
+
+  function matchesFilters(plan){
+    const term = search.value.trim().toLowerCase();
+    if(term && !(plan.name.toLowerCase().includes(term) || plan.slug.toLowerCase().includes(term))){
+      return false;
+    }
+    const mode = statusFilter.value;
+    if(mode === 'active')   return plan.active && !plan.archived_at;
+    if(mode === 'draft')    return !plan.active && !plan.archived_at;
+    if(mode === 'archived')  return Boolean(plan.archived_at);
+    return true;
+  }
+
+  async function loadPlans(){
+    hide(errorBox);
+    rows.innerHTML = '<tr><td colspan="7" class="empty">Loading plans…</td></tr>';
+    try{
+      const params = new URLSearchParams();
+      if(includeArchived.checked || statusFilter.value === 'archived'){
+        params.set('include_archived', 'true');
+      }
+      const res = await adminFetch('/api/admin/plans?' + params.toString());
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load plans.');
+
+      allPlans = data.plans || [];
+      const visible = allPlans.filter(matchesFilters);
+
+      if(!visible.length){
+        rows.innerHTML = '<tr><td colspan="7" class="empty">'
+          + (allPlans.length ? 'No plans match these filters.'
+                             : 'No plans yet. Create one to begin — it starts as a draft.')
+          + '</td></tr>';
+        return;
+      }
+
+      rows.innerHTML = visible.map(plan => `
+        <tr data-id="${plan.id}">
+          <td>
+            <div class="plan-name">${esc(plan.name)}</div>
+            <div class="muted">${esc(plan.slug)} · #${plan.id}</div>
+          </td>
+          <td>${planStatusPill(plan)}</td>
+          <td>${money(plan.price_monthly, plan.currency)}</td>
+          <td>${plan.trial_days ? esc(plan.trial_days) + ' days' : pill('None')}</td>
+          <td>${(plan.account_types || []).length
+                  ? (plan.account_types || []).map(t => pill(t)).join(' ')
+                  : pill('None','warn')}</td>
+          <td>${plan.organization_count ?? 0}</td>
+          <td>${esc(plan.display_order)}</td>
+        </tr>
+      `).join('');
+
+      rows.querySelectorAll('tr[data-id]').forEach(row => {
+        row.addEventListener('click', () => openPlan(Number(row.dataset.id)));
+      });
+    }catch(err){
+      rows.innerHTML = '';
+      showError(errorBox, err.message);
+    }
+  }
+
+  /* --- entitlement editor ------------------------------------------------- */
+
+  function entInputFor(item, storedValue){
+    const has = storedValue !== undefined;
+    const id = 'ent_' + item.key;
+    if(item.value_type === 'bool'){
+      return `<select id="${id}" data-key="${esc(item.key)}" data-type="bool">
+                <option value="">Inherit default</option>
+                <option value="true"${has && storedValue === true ? ' selected' : ''}>Enabled</option>
+                <option value="false"${has && storedValue === false ? ' selected' : ''}>Disabled</option>
+              </select>`;
+    }
+    if(item.value_type === 'int'){
+      return `<input id="${id}" data-key="${esc(item.key)}" data-type="int" type="number" step="1"
+                     min="${registry.unlimited}" placeholder="Inherit default"
+                     value="${has ? esc(storedValue) : ''}">`;
+    }
+    if(item.value_type === 'string'){
+      if(item.key === 'scan_frequency'){
+        const opts = (registry.scan_frequencies || [])
+          .map(v => `<option value="${esc(v)}"${has && storedValue === v ? ' selected' : ''}>${esc(v)}</option>`)
+          .join('');
+        return `<select id="${id}" data-key="${esc(item.key)}" data-type="string">
+                  <option value="">Inherit default</option>${opts}
+                </select>`;
+      }
+      return `<input id="${id}" data-key="${esc(item.key)}" data-type="string" type="text"
+                     placeholder="Inherit default" value="${has ? esc(storedValue) : ''}">`;
+    }
+    // list
+    const joined = has ? (storedValue || []).join(', ') : '';
+    return `<input id="${id}" data-key="${esc(item.key)}" data-type="list" type="text"
+                   placeholder="Inherit default — comma separated" value="${esc(joined)}">`;
+  }
+
+  function renderEntitlements(stored, resolved){
+    stored = stored || {};
+    resolved = resolved || {};
+    if(!registry.keys.length){
+      entRows.innerHTML = '<tr><td colspan="3" class="empty">No entitlement keys declared.</td></tr>';
+      return;
+    }
+    entRows.innerHTML = registry.keys.map(item => {
+      const isStored = Object.prototype.hasOwnProperty.call(stored, item.key);
+      const shownDefault = Array.isArray(item.default) ? item.default.join(', ') : String(item.default);
+      const effective = Object.prototype.hasOwnProperty.call(resolved, item.key)
+        ? (Array.isArray(resolved[item.key]) ? resolved[item.key].join(', ') : String(resolved[item.key]))
+        : shownDefault;
+      return `
+        <tr>
+          <td>
+            <div class="ent-key">${esc(item.key)}</div>
+            <div class="ent-desc">${esc(item.description || '')}</div>
+          </td>
+          <td>
+            ${entInputFor(item, isStored ? stored[item.key] : undefined)}
+            <div class="ent-inherited">${isStored ? 'Set on this plan' : 'Inheriting → ' + esc(effective)}</div>
+          </td>
+          <td class="muted">${esc(shownDefault)}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  /* Collect only the rows the admin actually set. An empty control means
+     "inherit", and omitting the key is how the API expresses that — the stored
+     snapshot is replaced wholesale on save. */
+  function collectEntitlements(){
+    const out = {};
+    entRows.querySelectorAll('[data-key]').forEach(el => {
+      const key = el.dataset.key;
+      const type = el.dataset.type;
+      const raw = (el.value ?? '').trim();
+      if(raw === '') return;
+      if(type === 'bool')   out[key] = raw === 'true';
+      else if(type === 'int'){
+        const n = Number(raw);
+        if(Number.isInteger(n)) out[key] = n;
+      }
+      else if(type === 'list'){
+        const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+        if(parts.length) out[key] = parts;
+      }
+      else out[key] = raw;
+    });
+    return out;
+  }
+
+  /* --- editor ------------------------------------------------------------- */
+
+  function fillForm(plan){
+    document.getElementById('f_name').value = plan.name || '';
+    document.getElementById('f_slug').value = plan.slug || '';
+    document.getElementById('f_description').value = plan.description || '';
+    document.getElementById('f_price_monthly').value = plan.price_monthly ?? '';
+    document.getElementById('f_price_annual').value = plan.price_annual ?? '';
+    document.getElementById('f_currency').value = plan.currency || 'USD';
+    document.getElementById('f_billing_interval').value = plan.billing_interval || 'monthly';
+    document.getElementById('f_trial_days').value = plan.trial_days ?? 0;
+    document.getElementById('f_display_order').value = plan.display_order ?? 0;
+    document.getElementById('f_ceiling').value = plan.monthly_cost_ceiling_usd ?? '';
+    const types = plan.account_types || [];
+    document.getElementById('f_acct_brand').checked = types.includes('brand');
+    document.getElementById('f_acct_agency').checked = types.includes('agency');
+  }
+
+  function readForm(){
+    const types = [];
+    if(document.getElementById('f_acct_brand').checked) types.push('brand');
+    if(document.getElementById('f_acct_agency').checked) types.push('agency');
+    const body = {
+      name: document.getElementById('f_name').value.trim(),
+      description: document.getElementById('f_description').value,
+      currency: document.getElementById('f_currency').value.trim().toUpperCase() || 'USD',
+      billing_interval: document.getElementById('f_billing_interval').value,
+      trial_days: Number(document.getElementById('f_trial_days').value || 0),
+      display_order: Number(document.getElementById('f_display_order').value || 0),
+      account_types: types,
+      price_monthly: document.getElementById('f_price_monthly').value.trim() || null,
+      price_annual: document.getElementById('f_price_annual').value.trim() || null,
+      monthly_cost_ceiling_usd: document.getElementById('f_ceiling').value.trim() || null,
+      entitlements: collectEntitlements()
+    };
+    const slug = document.getElementById('f_slug').value.trim();
+    if(slug) body.slug = slug;
+    return body;
+  }
+
+  function setArchivedState(plan){
+    const archived = Boolean(plan && plan.archived_at);
+    archivedWarn.style.display = archived ? 'block' : 'none';
+    saveBtn.disabled = archived;
+    toggleActiveBtn.style.display = (plan && plan.id && !archived) ? 'inline-flex' : 'none';
+    archiveBtn.style.display = (plan && plan.id && !archived) ? 'inline-flex' : 'none';
+    restoreBtn.style.display = archived ? 'inline-flex' : 'none';
+
+    if(plan && plan.id && !archived){
+      toggleActiveBtn.textContent = plan.active ? 'Deactivate' : 'Activate';
+      toggleActiveBtn.className = plan.active ? 'btn danger' : 'btn';
+      // Archiving is refused by the API while organizations are still assigned;
+      // say so before the click rather than after.
+      const assigned = plan.organization_count ?? 0;
+      archiveBtn.disabled = assigned > 0;
+      archiveBtn.title = assigned > 0
+        ? assigned + ' organization(s) are on this plan. Move them first.'
+        : '';
+    }
+  }
+
+  function openNewPlan(){
+    current = null;
+    hide(editorError, editorOk);
+    editorSection.style.display = 'block';
+    editorEyebrow.textContent = 'New plan';
+    editorTitle.textContent = 'Create a plan';
+    editorSubtitle.textContent = 'Saved as a draft. It stays invisible to customers until you activate it.';
+    fillForm({currency:'USD', billing_interval:'monthly', trial_days:0, display_order:0, account_types:[]});
+    renderEntitlements({}, {});
+    setArchivedState(null);
+    editorSection.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  async function openPlan(id){
+    hide(editorError, editorOk);
+    editorSection.style.display = 'block';
+    editorTitle.textContent = 'Loading…';
+    editorSubtitle.textContent = '';
+    editorSection.scrollIntoView({behavior:'smooth', block:'start'});
+    try{
+      const res = await adminFetch('/api/admin/plans/' + id);
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load plan.');
+      current = data.plan;
+      editorEyebrow.textContent = 'Plan detail';
+      editorTitle.textContent = current.name;
+      editorSubtitle.textContent = current.slug + ' · Plan #' + current.id
+        + ' · ' + (current.organization_count ?? 0) + ' organization(s)';
+      fillForm(current);
+      renderEntitlements(current.entitlements_stored, current.entitlements);
+      setArchivedState(current);
+    }catch(err){
+      showError(editorError, err.message);
+    }
+  }
+
+  async function savePlan(){
+    hide(editorError, editorOk);
+    const body = readForm();
+    if(!body.name){
+      showError(editorError, 'A plan name is required.');
+      return;
+    }
+    saveBtn.disabled = true;
+    try{
+      const creating = !(current && current.id);
+      const res = creating
+        ? await adminFetch('/api/admin/plans', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(body)})
+        : await adminFetch('/api/admin/plans/' + current.id, {
+            method:'PATCH', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify(body)});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error
+        || (data.fields ? 'Unsupported fields: ' + data.fields.join(', ') : 'Save failed.'));
+      flash(editorOk, creating ? 'Plan created as a draft.' : 'Plan saved.');
+      await loadPlans();
+      await openPlan(data.plan.id);
+    }catch(err){
+      showError(editorError, err.message);
+    }finally{
+      saveBtn.disabled = false;
+    }
+  }
+
+  async function postAction(path, confirmText, successText){
+    if(!(current && current.id)) return;
+    if(confirmText && !confirm(confirmText)) return;
+    hide(editorError, editorOk);
+    try{
+      const res = await adminFetch('/api/admin/plans/' + current.id + path, {method:'POST'});
+      const data = await res.json();
+      if(!res.ok){
+        throw new Error(data.error
+          + (data.organization_count ? ' (' + data.organization_count + ' assigned)' : ''));
+      }
+      flash(okBox, successText);
+      await loadPlans();
+      await openPlan(current.id);
+    }catch(err){
+      showError(editorError, err.message);
+    }
+  }
+
+  async function toggleActive(){
+    if(!(current && current.id)) return;
+    const next = !current.active;
+    if(next && !confirm('Activate "' + current.name + '"? It becomes purchasable by customers.')) return;
+    hide(editorError, editorOk);
+    try{
+      const res = await adminFetch('/api/admin/plans/' + current.id, {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({active: next})});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Could not change the plan status.');
+      flash(okBox, next ? 'Plan activated.' : 'Plan deactivated.');
+      await loadPlans();
+      await openPlan(current.id);
+    }catch(err){
+      showError(editorError, err.message);
+    }
+  }
+
+  document.getElementById('newPlanBtn').addEventListener('click', openNewPlan);
+  document.getElementById('refreshBtn').addEventListener('click', loadPlans);
+  document.getElementById('closeEditor').addEventListener('click', () => {
+    editorSection.style.display = 'none';
+    current = null;
+  });
+  saveBtn.addEventListener('click', savePlan);
+  toggleActiveBtn.addEventListener('click', toggleActive);
+  archiveBtn.addEventListener('click', () => postAction('/archive',
+    'Archive this plan? It stops being sellable. Archived plans are never deleted.',
+    'Plan archived.'));
+  restoreBtn.addEventListener('click', () => postAction('/restore',
+    'Restore this plan as a draft?', 'Plan restored as a draft.'));
+  search.addEventListener('keydown', (event) => { if(event.key === 'Enter') loadPlans(); });
+  statusFilter.addEventListener('change', loadPlans);
+  includeArchived.addEventListener('change', loadPlans);
+
+  // Auto-slug while creating, never when editing an existing plan.
+  document.getElementById('f_name').addEventListener('input', (event) => {
+    if(current && current.id) return;
+    const slugField = document.getElementById('f_slug');
+    if(slugField.dataset.touched) return;
+    slugField.value = event.target.value.trim().toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  });
+  document.getElementById('f_slug').addEventListener('input', (event) => {
+    event.target.dataset.touched = '1';
+  });
+
+  (async () => {
+    try{
+      await loadRegistry();
+    }catch(err){
+      showError(errorBox, err.message);
+    }
+    await loadPlans();
+  })();
+})();
+</script>
+{% endblock %}

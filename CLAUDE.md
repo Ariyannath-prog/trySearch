@@ -1,151 +1,332 @@
-# trySearch — working agreement
+# TrySearch — Claude Code Project Rules
 
-You are working on **trySearch**, an AEO / AI-search-visibility platform. Brands want to know
-whether ChatGPT, Gemini, Perplexity and Claude mention them when someone asks a buying question.
-We run their tracked prompts against those engines on a schedule, extract mentions and citations,
-and turn the result into metrics and recommendations.
+## Project
+TrySearch is a production Flask SaaS application for AI-search/AEO intelligence.
 
-Read `SPRINT.md` for the current task list. Do one task per branch. Do not start the next task
-until the current one's acceptance criteria pass.
+Production domain:
+https://trysearch.aevix.xyz
 
----
+Repository/app root:
+ /home/trysearch.aevix.xyz/app
 
-## The three invariants
+Python environment:
+ /home/trysearch.aevix.xyz/app/venv
 
-Everything else in this file is negotiable. These are not.
+Production service:
+ trysearch.service
 
-1. **`answers` are immutable.** The provider's full JSON response is written to `answers.raw_response`
-   before anything is derived from it, and that row is never updated. This is what lets us recompute
-   every metric after a formula change, and re-run extraction at zero engine cost.
-2. **Dashboards read `metrics_daily`, never `answers`.** If a read path touches raw answers, it is
-   wrong. Rollups are the read path.
-3. **Every provider call writes a `usage_ledger` row — success or failure.** Spend ceilings count
-   usage rows, not run rows: a retry storm writes no runs but burns money.
+Gunicorn:
+ 127.0.0.1:8000
 
-If a task appears to require breaking one of these, stop and say so instead of breaking it.
+Web server:
+ OpenLiteSpeed / CyberPanel
 
----
+Database:
+ PostgreSQL database: trysearch
 
-## Never do these
+## CRITICAL SAFETY RULES
 
-- **No vector database, no embeddings, no pgvector.** Retrieval is BM25 over crawled page chunks
-  and it already works. The entire competitive category runs without embeddings.
-- **No NER or ML for mention detection.** It is a word-boundary regex over
-  `brand_name + aliases + domains`. This is what the market leader does. Do not "improve" it.
-- **No Redis, no Celery, no RabbitMQ.** The job queue is a Postgres table plus a CLI worker.
-- **No MongoDB.** `server_mongo.py`, `mongo_config.py` and `migrate_postgres_to_mongo.py` are being
-  deleted. Never add pymongo back.
-- **No microservices, no Next.js rewrite, no framework migration.** Flask stays.
-- **No JS rendering in the crawler.** Fetching static HTML is a deliberate methodology choice — it
-  mirrors how real AI crawlers read a page. Document it; do not fix it.
-- **No scraping of consumer AI UIs.** Official APIs only. Scraped surfaces come from a licensed
-  vendor later, behind the same adapter interface.
-- **Never invent a metric with an LLM.** Models generate prompts, sentiment labels, summaries and
-  recommendation prose. Every number is computed in SQL or Python from stored evidence.
-- **Never call a paid API from a test.** Tests use recorded fixtures in `tests/fixtures/`.
-- **Never run a migration against production.** Staging only. Ask before anything touching prod.
+This is a live production server.
 
----
+NEVER run:
+- git reset --hard
+- git clean -fd
+- destructive database resets
+- DROP DATABASE
+- DROP TABLE
+- truncate production tables
+- mass deletion of production data
+- blind git pull
+- overwrite production files without inspecting them first
 
-## Repo map
+NEVER modify:
+- unrelated websites/domains on this VPS
+- MariaDB unless explicitly required
+- Redis unless explicitly required
+- OpenLiteSpeed global configuration unless explicitly required
+- CyberPanel configuration unless explicitly required
 
-```
-server_pg.py          # thin entrypoint after T1: app factory + blueprint registration only
+NEVER expose:
+- API keys
+- OAuth client secrets
+- database passwords
+- Fernet encryption keys
+- session secrets
+- .env contents
+- decrypted provider credentials
+
+Never print secrets in terminal output.
+
+## DEVELOPMENT WORKFLOW
+
+Before changing an important subsystem:
+
+1. Inspect the existing implementation.
+2. Understand all callers/importers.
+3. Identify backward-compatibility requirements.
+4. Make a small plan.
+5. Create a backup before risky edits.
+6. Make the smallest coherent change.
+7. Run syntax/import checks.
+8. Run relevant tests.
+9. Review git diff.
+10. Restart production service only when necessary.
+11. Verify service health after restart.
+
+Prefer incremental changes over rewriting files.
+
+Do not replace existing modules wholesale unless their complete dependency surface has been inspected.
+
+## EXISTING ARCHITECTURE
+
+Main Flask app:
 app/
-  models.py           # SQLAlchemy Core table definitions, one place
-  auth.py             # session auth, register/login/me
-  tenancy.py          # require_workspace(), require_org(), role checks
-  routes/             # one blueprint per surface: analytics, prompts, evidence, audit, content, reports
-  engines/            # base.py (EngineAdapter protocol) + one module per engine
-  extraction/         # mentions, rank, citations, sentiment. versioned.
-  crawler/            # WebsiteAuditParser, fetch guards, sitemap discovery, scoring
-  rag/                # BM25 chunking + ranking
-  integrations/       # gsc.py, ga4.py — OAuth, token vault, sync
-  metrics.py          # rollups, Visibility Score, Wilson intervals
-  worker.py           # job dispatch, leases, recovery
-  costs.py            # usage_ledger writes, per-provider estimation, ceilings
-migrations/           # Alembic
-tests/
-  fixtures/           # recorded provider JSON. never hand-written.
-```
 
-Legacy files being deleted, do not extend them: `server.py`, `server_mongo.py`, `mongo_config.py`,
-`migrate_postgres_to_mongo.py`, and the mock-era tables listed in `SPRINT.md` T5.
+Important areas include:
+- app/routes/
+- app/engines/
+- app/integrations/
+- app/models.py
+- app/db.py
+- app/scanning.py
+- app/crawler/
+- app/rag/
+- app/reports/
+- app/jobs/
+- templates/
+- migrations/
 
----
+Authentication:
+session-based Flask auth.
 
-## Conventions
+Multi-tenancy:
+organizations
+memberships
+workspaces
 
-- **Python 3.13, Flask 3.1, SQLAlchemy 2.0 Core** (not the ORM — match the existing style),
-  `psycopg` 3. No new runtime dependencies without saying why in the PR description.
-- **Every table carries `workspace_id`** unless it is org-level. Every query that reads
-  workspace-scoped data goes through `require_workspace()`. Never hand-write
-  `WHERE user_id = ?` again — that pattern is the bug we are removing.
-- **All schema changes are Alembic migrations.** No `ensure_database_column`, no `create_all` in
-  application code.
-- **Money is `numeric`, never float.** Timestamps are `timestamptz`, always UTC.
-- **A rate is `NULL` when its denominator is zero, never `0`.** A brand that was never measured is
-  not a brand that scored zero, and the UI must be able to tell the difference.
-- **Adapters never touch the database and never raise past their own boundary.** They take a string
-  and return an `EngineResult`. A provider failure is `status='failed'` with an error string, so one
-  engine going down never fails a run for the others.
-- Keep functions small enough to read. If a module passes ~600 lines, split it.
+Platform admin is separate from organization roles.
 
-## Product rules that are UI, not backend
+## ENGINE ARCHITECTURE
 
-These are the product's differentiator. Do not quietly drop them to ship faster.
+Engine adapters live in:
 
-- **Never render a bare number.** Every headline metric displays its 95% Wilson interval and its
-  sample size without needing a hover. A delta smaller than the interval renders as
-  *"no measurable change"*, not as an arrow.
-- **Three distinct empty states**, never one: *not yet run* · *ran and the brand was absent* ·
-  *too few runs to say*. These are different facts and users act on them differently.
-- **Evidence above advice.** Every recommendation card shows the observation that produced it, with
-  a link to the raw answers, rendered above the recommendation text.
-- **Label every engine with its source type.** Gemini-with-search-grounding is a *proxy* for Google
-  AI Overviews, not the thing itself, and the UI must say so.
+app/engines/
 
----
+Current registered adapters:
+- perplexity
+- openai
+- google_gemini
+- anthropic
+- xai
+- deepseek
+- meta
 
-## Testing
+Registry:
+app/engines/registry.py
 
-The acceptance criterion for every task is a passing test, because that is what gets reviewed.
+Adapter contract:
+app/engines/base.py
 
-- `pytest`. Fast, no network, no paid calls.
-- **Provider fixtures are recorded, not written.** `scripts/record_fixture.py` makes one real call
-  with a real key and saves the raw JSON to `tests/fixtures/<engine>/<case>.json`. Adapter tests
-  replay those. When a provider changes its format, you re-record; you never edit the JSON by hand.
-- **Contract test per adapter**, run daily in CI, asserting the shape of a live response and
-  alerting on parse failure. Engines change formats constantly and we want to hear it from CI.
-- **Isolation tests are mandatory** for anything touching tenancy: create two workspaces in two
-  orgs, assert every read path returns nothing for the wrong one.
-- Metrics get golden tests: a fixed set of extraction rows in, an exact Visibility Score out,
-  including the worked example from the PRD (VS = 44.5).
+Adapters must:
+- accept runtime credentials
+- not import app.db or app.models
+- use EngineResult
+- use guard()
+- preserve legacy helper functions where existing callers depend on them
 
-## Definition of done
+IMPORTANT:
+A previous Gemini change broke production because a legacy
+call_gemini_text import was removed.
 
-A task is done when: the acceptance criteria in `SPRINT.md` pass · `pytest` is green · a migration
-exists if the schema changed · no new dependency appeared without justification · none of the three
-invariants was broken · the PR description says in three sentences what changed and what to check.
+Therefore:
+Before changing an engine module, search for all imports/usages.
 
-## When you are unsure
+Provider credentials are encrypted and injected at runtime.
 
-Stop and ask. Specifically: before deleting data, before touching production, before adding a
-dependency, before changing a metric formula, and before doing anything this file forbids. A
-question costs a minute; a silent wrong assumption costs a week.
+## PROVIDERS
 
----
+Current provider catalog:
+- OpenAI
+- Google Gemini
+- Perplexity
+- Anthropic
+- Microsoft Copilot
+- xAI
+- DeepSeek
+- Meta
 
-## Reference docs in this repo
+Microsoft Copilot is NOT fully implemented yet.
+Do not implement or enable Copilot unless explicitly requested.
 
-- `SPRINT.md` — the current task list. Work one task per branch, in order.
-- `docs/architecture-spec.md` — **the DDL, the engine adapter contract, job orchestration rules,
-  the extraction pipeline, and the build order.** Read this before any schema or engine work.
-- `docs/prototype-audit.md` — what already exists in this codebase and why each sprint task is
-  here. Read this before deleting or rewriting anything.
-- `docs/searchable-teardown.md` — how the competitor we're replicating actually works, feature by
-  feature. Read this when you need to know what a module is supposed to do.
-- `docs/PRD.md` — product requirements, acceptance criteria per module, the Visibility Score
-  specification (§13), and the cost model (§6a).
-- `docs/handover-plan.md` — **not for you.** Account and credential notes for the owner only.
-  Ignore it.
+Copilot requires a different Microsoft Entra/delegated OAuth architecture.
+
+## ADMIN SYSTEM
+
+Admin provider/API-key management exists.
+
+Important routes:
+- /admin/api-keys
+- /admin/engines
+- /api/admin/providers
+- /api/admin/api-keys
+- /api/admin/api-keys/<id>/test
+- /api/admin/engines
+
+Provider credentials are stored encrypted.
+
+Connection tests must return useful structured JSON.
+
+## CURRENT PRODUCT DIRECTION
+
+The immediate goal is to finish the actual TrySearch product, not continue adding providers.
+
+Core product flow:
+
+Website
+→ Project
+→ Prompts
+→ Scheduled prompt scans
+→ AI engine execution
+→ AI answers
+→ Mention extraction
+→ Citation extraction
+→ Competitor detection
+→ Sentiment
+→ Visibility metrics
+→ Dashboard
+
+Then:
+- competitors
+- sources/citations
+- site crawler/AEO audit
+- analytics
+- recommendations/actions
+- content generation
+- TrySearch Agent
+- reports
+
+## PRIORITY BUILD ORDER
+
+Build in this order unless explicitly changed:
+
+1. Project setup/onboarding
+2. Prompt management
+3. Prompt execution/job system
+4. Answer storage/processing
+5. Mention/citation extraction
+6. Visibility calculations
+7. Main dashboard
+8. Competitor intelligence
+9. Sources/citation intelligence
+10. Sentiment
+11. Site crawler/AEO audit
+12. Analytics
+13. Recommendations/actions
+14. Content Studio
+15. Brand knowledge/RAG improvements
+16. TrySearch Agent
+17. Reports
+
+Business expansion such as:
+- billing
+- agency/white-label
+- public API
+- MCP
+
+comes later.
+
+## DATA PRINCIPLES
+
+Prefer existing tables and architecture when possible.
+
+Do not create duplicate concepts when an existing model can be extended.
+
+Maintain organization/workspace isolation.
+
+Every workspace-scoped feature must verify access using the existing tenancy/access helpers.
+
+Store raw AI responses when appropriate for audit/debugging, while avoiding secret leakage.
+
+Make metrics reproducible from stored underlying data.
+
+## TESTING
+
+At minimum, after meaningful backend changes run:
+- python syntax checks
+- relevant unit/integration tests
+- import checks
+- targeted endpoint checks
+
+Before declaring a feature complete:
+- verify production service starts
+- verify Gunicorn worker boots
+- verify relevant endpoint returns expected status
+- check recent logs
+- inspect git diff
+
+Never claim a feature works unless it was actually tested.
+
+## UI PRINCIPLES
+
+TrySearch should feel like a professional SaaS product.
+
+Prefer:
+- clear navigation
+- responsive layouts
+- useful empty states
+- loading states
+- actionable errors
+- consistent terminology
+- accessible controls
+- charts/tables that expose the underlying evidence
+
+Do not create fake metrics or placeholder analytics and present them as real data.
+
+## WHEN STARTING A LARGE TASK
+
+First:
+1. Inspect the repository.
+2. Inspect existing related routes/models/templates/tests.
+3. Identify what already exists.
+4. Produce a concise implementation plan.
+5. Then implement incrementally.
+
+Do not immediately rewrite large sections of the application.
+
+## GIT
+
+Review:
+git status
+git diff
+
+before and after major changes.
+
+Preserve unrelated local changes.
+
+Never assume all local modifications are disposable.
+
+## PRODUCTION DATABASE
+
+Production PostgreSQL is:
+database: trysearch
+
+Do not point tests at production.
+
+Use the existing test database/test configuration for tests.
+
+## COMMUNICATION
+
+When a task is large:
+- state what you inspected
+- state the implementation plan
+- implement in milestones
+- report tests/results
+- explicitly mention anything not completed
+
+Do not silently skip requirements.
+
+## MAIN GOAL
+
+Build TrySearch into a functional AI-search visibility/AEO platform.
+
+The goal is a working product, not merely a collection of APIs.

@@ -1,0 +1,85 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}Admin Overview · trySearch{% endblock %}
+
+{% block content %}
+<div class="top">
+  <div>
+    <div class="eyebrow">Control Center</div>
+    <h1>Admin Overview</h1>
+    <div class="sub">
+      Manage users, organizations, workspaces, engines, provider credentials,
+      application settings and platform activity from one place.
+    </div>
+  </div>
+</div>
+
+<div class="grid" id="stats">
+  <div class="card"><div class="label">Users</div><div class="value" id="users">—</div></div>
+  <div class="card"><div class="label">Organizations</div><div class="value" id="organizations">—</div></div>
+  <div class="card"><div class="label">Active workspaces</div><div class="value" id="workspaces">—</div></div>
+  <div class="card"><div class="label">Enabled engines</div><div class="value" id="engines">—</div></div>
+</div>
+
+<div class="section">
+  <h2>Platform health</h2>
+  <div class="panel">
+    <div class="status">
+      <span class="dot" id="db-dot"></span>
+      <span id="db-status">Checking database…</span>
+    </div>
+    <div class="sub" id="db-error" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Quick management</h2>
+  <div class="quick">
+    <a href="/admin/users">Manage users →</a>
+    <a href="/admin/organizations">Manage organizations →</a>
+    <a href="/admin/engines">Manage engines →</a>
+    <a href="/admin/api-keys">Provider API keys →</a>
+    <a href="/admin/audit">Admin audit log →</a>
+    <a href="/admin/system">System health →</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(async function(){
+  const value = id => document.getElementById(id);
+
+  try {
+    const res = await fetch('/api/admin/overview', {
+      credentials: 'same-origin',
+      headers: {'Accept':'application/json'}
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Admin overview request failed');
+    }
+
+    value('users').textContent = data.users;
+    value('organizations').textContent = data.organizations;
+    value('workspaces').textContent = data.workspaces;
+    value('engines').textContent = `${data.enabled_engines}/${data.engines}`;
+
+    if (data.database.ok) {
+      value('db-dot').classList.add('good');
+      value('db-status').textContent = 'Database connection healthy';
+    } else {
+      value('db-dot').classList.add('bad');
+      value('db-status').textContent = 'Database connection failed';
+      value('db-error').textContent = data.database.error || '';
+    }
+  } catch (error) {
+    value('db-dot').classList.add('bad');
+    value('db-status').textContent = 'Unable to load admin overview';
+    value('db-error').textContent = error.message;
+  }
+})();
+</script>
+{% endblock %}

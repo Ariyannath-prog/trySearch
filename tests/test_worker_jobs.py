@@ -16,7 +16,7 @@ os.environ['APP_ENV'] = 'development'
 os.environ['SECRET_KEY'] = 'worker-jobs-test-secret'
 
 import server_pg  # noqa: E402
-from conftest import create_workspace  # noqa: E402
+from conftest import create_workspace, pin_workspace_engines  # noqa: E402
 
 from sqlalchemy import insert, select, update  # noqa: E402
 from werkzeug.security import generate_password_hash  # noqa: E402
@@ -259,6 +259,10 @@ class WorkerRecoveryTests(unittest.TestCase):
         cls.user = make_user('worker_recovery')
         cls.workspace = create_workspace(user_id=cls.user, domain='recovery.example',
                                          brand_name='Recovery')
+        # Order-independence: this test counts provider calls per prompt, so the
+        # workspace must run exactly one engine regardless of what rows other test
+        # modules have left enabled.
+        pin_workspace_engines(cls.workspace)
         add_prompts(cls.workspace, 4, label='recovery')
 
     def test_stale_running_job_is_requeued_and_resumes_without_recharging(self):

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}trySearch Admin{% endblock %}</title>
+  <style>
+    :root{
+      --bg:#0b0a0f;
+      --panel:#15121b;
+      --panel2:#1b1722;
+      --border:#302837;
+      --text:#f5f1f7;
+      --muted:#aaa0b1;
+      --accent:#ed3b78;
+      --good:#46d28a;
+      --bad:#ff697f;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text)}
+    a{color:inherit;text-decoration:none}
+    .admin-shell{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+    .sidebar{border-right:1px solid var(--border);background:#100d15;padding:22px 14px;position:sticky;top:0;height:100vh}
+    .brand{font-weight:900;font-size:20px;padding:0 10px 24px}
+    .brand span{color:var(--accent)}
+    .nav{display:grid;gap:5px}
+    .nav a{padding:11px 12px;border-radius:10px;color:var(--muted);font-size:13px}
+    .nav a:hover,.nav a.active{background:var(--panel2);color:var(--text)}
+    .main{padding:28px;max-width:1400px;width:100%}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:25px}
+    .eyebrow{text-transform:uppercase;letter-spacing:.12em;color:var(--accent);font-size:10px;font-weight:800}
+    h1{margin:6px 0 8px;font-size:34px;letter-spacing:-.04em}
+    .sub{color:var(--muted);max-width:760px;font-size:13px;line-height:1.6}
+    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+    .card{background:linear-gradient(145deg,#17131d,#120f16);border:1px solid var(--border);border-radius:16px;padding:19px}
+    .label{font-size:11px;color:var(--muted)}
+    .value{font-size:28px;font-weight:800;margin-top:8px}
+    .section{margin-top:24px}
+    .section h2{font-size:17px;margin:0 0 12px}
+    .status{display:inline-flex;align-items:center;gap:7px;font-size:11px}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+    .dot.good{background:var(--good)}
+    .dot.bad{background:var(--bad)}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px}
+    .quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+    .quick a{padding:16px;border:1px solid var(--border);border-radius:12px;background:#121018;color:var(--muted)}
+    .quick a:hover{border-color:#55475e;color:var(--text)}
+    @media(max-width:900px){
+      .admin-shell{grid-template-columns:1fr}
+      .sidebar{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border)}
+      .nav{grid-template-columns:repeat(3,1fr)}
+      .grid{grid-template-columns:repeat(2,1fr)}
+    }
+    @media(max-width:560px){
+      .main{padding:18px}
+      .nav{grid-template-columns:repeat(2,1fr)}
+      .grid,.quick{grid-template-columns:1fr}
+      h1{font-size:28px}
+    }
+  </style>
+  {% block head %}{% endblock %}
+  <script>
+    /* Per-session CSRF token, injected by app/security.py's context processor.
+       Admin pages call fetch() directly rather than through static/js/api.js, so
+       they attach it with adminFetch below. */
+    window.TS_CSRF = {{ csrf_token | tojson }};
+    window.adminFetch = function (url, opts) {
+      opts = opts || {};
+      opts.credentials = opts.credentials || 'same-origin';
+      var method = (opts.method || 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'HEAD') {
+        opts.headers = Object.assign({}, opts.headers || {}, { 'X-CSRF-Token': window.TS_CSRF });
+      }
+      return fetch(url, opts);
+    };
+  </script>
+</head>
+<body>
+<div class="admin-shell">
+  <aside class="sidebar">
+    <div class="brand">try<span>Search</span> Admin</div>
+    <nav class="nav">
+      <a href="/admin/">Overview</a>
+      <a href="/admin/users">Users</a>
+      <a href="/admin/organizations">Organizations</a>
+      <a href="/admin/plans">Plans</a>
+      <a href="/admin/providers">Providers</a>
+      <a href="/admin/workspaces">Workspaces</a>
+      <a href="/admin/engines">Engines</a>
+      <a href="/admin/api-keys">API Keys</a>
+      <a href="/admin/email">Email</a>
+      <a href="/admin/audit">Audit</a>
+      <a href="/admin/system">System</a>
+      <a href="/admin/settings">Settings</a>
+      <a href="/">Public site</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -122,12 +122,60 @@ def refresh_google_access_token(connection):
         ))
     return access_token
 
+def _aggregate_query_rows(rows):
+    """clicks/impressions summed, CTR re-derived, position weighted by
+    impressions - the one formula every clicks/impressions/position rollup
+    in this module uses, whether for the latest sync or a historical one."""
+    if not rows:
+        return None
+    clicks = sum(float(row['clicks']) for row in rows)
+    impressions = sum(float(row['impressions']) for row in rows)
+    weighted_position = sum(float(row['position']) * float(row['impressions']) for row in rows)
+    return {
+        'clicks': round(clicks, 2), 'impressions': round(impressions, 2),
+        'ctr': round(clicks / impressions * 100, 2) if impressions else 0,
+        'position': round(weighted_position / impressions, 2) if impressions else None,
+    }
+
+
+def _top_by(rows, dimension, limit=25):
+    """Group already-fetched (query, page) rows by one dimension.
+
+    The stored rows are per (query, page) pair - the shape a Search Console
+    API call with dimensions=['query','page'] returns. Top-queries and
+    top-pages are not separately stored anywhere, so they are derived here
+    in Python from rows already read for the workspace's own metrics -
+    no second query, no re-fetch.
+    """
+    buckets = {}
+    for row in rows:
+        key = row.get(dimension)
+        if not key:
+            continue
+        bucket = buckets.setdefault(key, {'clicks': 0.0, 'impressions': 0.0, 'weighted_position': 0.0})
+        bucket['clicks'] += float(row['clicks'])
+        bucket['impressions'] += float(row['impressions'])
+        bucket['weighted_position'] += float(row['position']) * float(row['impressions'])
+    result = []
+    for key, bucket in buckets.items():
+        impressions = bucket['impressions']
+        result.append({
+            dimension: key, 'clicks': round(bucket['clicks'], 2),
+            'impressions': round(impressions, 2),
+            'ctr': round(bucket['clicks'] / impressions * 100, 2) if impressions else 0,
+            'position': round(bucket['weighted_position'] / impressions, 2) if impressions else None,
+        })
+    result.sort(key=lambda item: item['clicks'], reverse=True)
+    return result[:limit]
+
+
 def gsc_report(workspace_id, user_id):
     connection = gsc_connection_for_project(workspace_id, user_id)
     if not connection:
         return {
             'configured': google_search_console_configured(), 'status': 'disconnected',
-            'property': None, 'properties': [], 'last_sync': None, 'metrics': None, 'queries': [],
+            'property': None, 'properties': [], 'last_sync': None, 'metrics': None,
+            'queries': [], 'top_queries': [], 'top_pages': [], 'history': [],
         }
     with engine.connect() as conn:
         properties = [row_to_dict(row) for row in conn.execute(select(gsc_properties).where(
@@ -136,31 +184,44 @@ def gsc_report(workspace_id, user_id):
         sync = conn.execute(select(gsc_sync_runs).where(
             gsc_sync_runs.c.connection_id == connection['id']
         ).order_by(desc(gsc_sync_runs.c.created_at)).limit(1)).mappings().first()
-        rows = []
-        metric_rows = []
+        all_rows = []
         if sync and sync['status'] == 'succeeded':
-            rows = [row_to_dict(row) for row in conn.execute(select(gsc_query_rows).where(
+            all_rows = [row_to_dict(row) for row in conn.execute(select(gsc_query_rows).where(
                 gsc_query_rows.c.sync_run_id == sync['id']
-            ).order_by(desc(gsc_query_rows.c.clicks), desc(gsc_query_rows.c.impressions)).limit(100)).mappings().all()]
-            metric_rows = conn.execute(select(
-                gsc_query_rows.c.clicks, gsc_query_rows.c.impressions, gsc_query_rows.c.position,
-            ).where(gsc_query_rows.c.sync_run_id == sync['id'])).mappings().all()
-    metrics = None
-    if metric_rows:
-        clicks = sum(float(row['clicks']) for row in metric_rows)
-        impressions = sum(float(row['impressions']) for row in metric_rows)
-        weighted_position = sum(float(row['position']) * float(row['impressions']) for row in metric_rows)
-        metrics = {
-            'clicks': round(clicks, 2), 'impressions': round(impressions, 2),
-            'ctr': round(clicks / impressions * 100, 2) if impressions else 0,
-            'position': round(weighted_position / impressions, 2) if impressions else None,
-            'rows_in_view': len(rows), 'rows_saved': len(metric_rows),
-        }
+            )).mappings().all()]
+
+        # History: the last 12 syncs for this connection (any status), each
+        # scored with the exact same aggregation - one extra query for all of
+        # their rows together, not one per sync.
+        recent_syncs = [row_to_dict(row) for row in conn.execute(select(gsc_sync_runs).where(
+            gsc_sync_runs.c.connection_id == connection['id']
+        ).order_by(desc(gsc_sync_runs.c.created_at)).limit(12)).mappings().all()]
+        succeeded_ids = [item['id'] for item in recent_syncs if item['status'] == 'succeeded']
+        rows_by_sync = {sync_id: [] for sync_id in succeeded_ids}
+        if succeeded_ids:
+            for row in conn.execute(select(
+                gsc_query_rows.c.sync_run_id, gsc_query_rows.c.clicks,
+                gsc_query_rows.c.impressions, gsc_query_rows.c.position,
+            ).where(gsc_query_rows.c.sync_run_id.in_(succeeded_ids))).mappings():
+                rows_by_sync[row['sync_run_id']].append(row)
+
+    for item in recent_syncs:
+        item['metrics'] = _aggregate_query_rows(rows_by_sync.get(item['id'], []))
+    recent_syncs.reverse()
+
+    rows_sorted = sorted(all_rows, key=lambda r: (r['clicks'], r['impressions']), reverse=True)
+    metrics = _aggregate_query_rows(all_rows)
+    if metrics is not None:
+        metrics['rows_in_view'] = min(len(rows_sorted), 100)
+        metrics['rows_saved'] = len(all_rows)
     return {
         'configured': google_search_console_configured(), 'status': connection['status'],
         'property': connection.get('selected_property'), 'properties': properties,
         'last_error': connection.get('last_error'),
-        'last_sync': row_to_dict(sync) if sync else None, 'metrics': metrics, 'queries': rows,
+        'last_sync': row_to_dict(sync) if sync else None, 'metrics': metrics,
+        'queries': rows_sorted[:100],
+        'top_queries': _top_by(all_rows, 'query'), 'top_pages': _top_by(all_rows, 'page'),
+        'history': recent_syncs,
     }
 
 @gsc_bp.route('/api/analytics/integrations/google/start', methods=['GET'])
@@ -215,7 +276,7 @@ def google_search_console_oauth_callback():
         return error
     user_id, project = access.user_id, access.workspace
     if request.args.get('error'):
-        return redirect(f'/analytics?project={workspace_id}&gsc=denied')
+        return redirect(f'/search-console?project={workspace_id}&gsc=denied')
     code = request.args.get('code')
     if not code:
         return jsonify({'error': 'Google did not return an authorization code.'}), 400
@@ -275,9 +336,9 @@ def google_search_console_oauth_callback():
                         permission_level=(site.get('permissionLevel') or 'unknown')[:80],
                         selected=site_url == selected_property,
                     ))
-        return redirect(f'/analytics?project={workspace_id}&gsc=connected')
+        return redirect(f'/search-console?project={workspace_id}&gsc=connected')
     except (ProviderAPIError, RuntimeError) as error:
-        return redirect(f'/analytics?project={workspace_id}&gsc=error&message={quote(str(error)[:180])}')
+        return redirect(f'/search-console?project={workspace_id}&gsc=error&message={quote(str(error)[:180])}')
 
 @gsc_bp.route('/api/analytics/projects/<int:workspace_id>/search-console', methods=['GET', 'DELETE'])
 def search_console_connection_endpoint(workspace_id):
@@ -298,7 +359,8 @@ def search_console_connection_endpoint(workspace_id):
                 conn.execute(gsc_properties.delete().where(gsc_properties.c.connection_id == connection['id']))
                 conn.execute(gsc_connections.delete().where(gsc_connections.c.id == connection['id']))
         return jsonify({'status': 'disconnected'})
-    return jsonify({'search_console': gsc_report(workspace_id, user_id)})
+    return jsonify({'project': row_to_dict(access.workspace),
+                    'search_console': gsc_report(workspace_id, user_id)})
 
 @gsc_bp.route('/api/analytics/projects/<int:workspace_id>/search-console/property', methods=['PUT'])
 def select_search_console_property(workspace_id):

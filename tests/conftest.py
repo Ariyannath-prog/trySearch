@@ -32,6 +32,61 @@ from app.db import engine, metadata  # noqa: E402
 metadata.create_all(engine)
 
 
+# --- CSRF-aware test client --------------------------------------------------
+# State-changing /api/ requests now require a per-session CSRF token
+# (app/security.py). Without this, every existing mutating test would start
+# getting 403 csrf_invalid and would be asserting on CSRF rather than on the
+# behaviour it was written to cover - and the ones that *expect* 403 would pass
+# for entirely the wrong reason, which is worse than failing.
+#
+# Patching Flask.test_client_class makes every test client in the suite fetch and
+# attach the token automatically, so existing tests keep their original meaning
+# and no test file has to change. Tests that are specifically about CSRF opt out
+# with raw_client() below.
+import flask  # noqa: E402
+from flask.testing import FlaskClient  # noqa: E402
+
+CSRF_HEADER = 'X-CSRF-Token'
+_MUTATING_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}
+
+
+class CSRFTestClient(FlaskClient):
+    """Attaches the session's CSRF token to state-changing requests."""
+
+    csrf_enabled = True
+
+    def open(self, *args, **kwargs):
+        method = (kwargs.get('method') or (args[1] if len(args) > 1 else 'GET') or 'GET')
+        if self.csrf_enabled and str(method).upper() in _MUTATING_METHODS:
+            headers = dict(kwargs.get('headers') or {})
+            if CSRF_HEADER not in headers:
+                token = self._csrf_token()
+                if token:
+                    headers[CSRF_HEADER] = token
+                    kwargs['headers'] = headers
+        return super().open(*args, **kwargs)
+
+    def _csrf_token(self):
+        """Fetch the token on this same client, so the session cookie is reused."""
+        response = super().open('/api/csrf-token', method='GET')
+        if response.status_code != 200:
+            return None
+        return (response.get_json() or {}).get('csrf_token')
+
+
+flask.Flask.test_client_class = CSRFTestClient
+
+
+def raw_client(app):
+    """A test client that does NOT attach a CSRF token.
+
+    For tests asserting that CSRF enforcement actually refuses a request.
+    """
+    client = app.test_client()
+    client.csrf_enabled = False
+    return client
+
+
 def _seed_engines():
     """Mirror the T12 migration's seed.
 
@@ -65,15 +120,32 @@ class NetworkAccessDenied(RuntimeError):
 
 @pytest.fixture(autouse=True)
 def database_schema():
-    """Guarantee the schema exists before each test, whatever ran before.
+    """Guarantee the schema exists and remove test-only engine rows between tests."""
+    from sqlalchemy import text
 
-    metadata.create_all is idempotent. This is belt-and-braces after a
-    tearDownClass calling engine.dispose() silently emptied the shared in-memory
-    database for every test that sorted after it.
-    """
     metadata.create_all(engine)
     _seed_engines()
+
+    # These rows are created by RegistryTableTests. Remove leftovers from a
+    # previous test invocation before and after each test so the suite is
+    # repeatable on the same dedicated test database.
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM engines "
+                "WHERE key IN ('future-engine', 'off-engine')"
+            )
+        )
+
     yield
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "DELETE FROM engines "
+                "WHERE key IN ('future-engine', 'off-engine')"
+            )
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -159,16 +231,43 @@ def create_workspace(*, user_id, domain='example.com', brand_name='Example',
     """
     from datetime import datetime
 
-    from sqlalchemy import insert
+    from sqlalchemy import insert, select, text
 
     from app.db import engine as _engine
-    from app.models import memberships, organizations, workspaces
+    from app.models import memberships, organizations, users, workspaces
 
     now = created_at or datetime.utcnow()
     with _engine.begin() as conn:
+        existing_user = conn.execute(
+            select(users.c.id).where(users.c.id == user_id)
+        ).scalar_one_or_none()
+
+        if existing_user is None:
+            conn.execute(insert(users).values(
+                id=user_id,
+                username=f'testuser{user_id}',
+                email=f'testuser{user_id}@example.test',
+                password_hash='test-fixture-password',
+                created_at=now,
+                is_platform_admin=False,
+                is_active=True,
+                last_login_at=None,
+            ))
+            # Inserting an explicit id does NOT advance users_id_seq, so a later
+            # insert that lets the sequence assign an id can collide with a row
+            # created here. Two tests use user_id=1, which made nextval=1 a
+            # guaranteed duplicate once any test inserted a user without an id.
+            # Re-syncing the sequence after an explicit insert removes a landmine
+            # whose victim depended purely on execution order.
+            conn.execute(text(
+                "SELECT setval(pg_get_serial_sequence('users', 'id'), "
+                "(SELECT MAX(id) FROM users))"
+            ))
+
         org_id = conn.execute(insert(organizations).values(
             name=f'Org for {brand_name}', created_at=now,
         )).inserted_primary_key[0]
+
         conn.execute(insert(memberships).values(
             org_id=org_id, user_id=user_id, role='owner',
         ))
@@ -180,6 +279,50 @@ def create_workspace(*, user_id, domain='example.com', brand_name='Example',
         )).inserted_primary_key[0]
     return workspace_id
 
+
+
+def pin_workspace_engines(workspace_id, keys=('perplexity',)):
+    """Restrict a workspace to specific engines, via the real product mechanism.
+
+    scanning.enabled_engines() treats "no workspace_engines rows" as "use every
+    platform-enabled engine". That makes any test which asserts a per-engine count
+    depend on which engine rows *other* test modules happen to have left behind:
+    test_dashboard_on_demand.py inserts enabled 'openai' and 'openrouter' rows and
+    never removes them, and it sorts before test_usage_ledger.py, so those counts
+    silently tripled.
+
+    Writing a complete selection snapshot - one row per platform-enabled engine,
+    enabled only for `keys` - is exactly what onboarding does, so the test exercises
+    production behaviour rather than working around it, and the assertion stops
+    depending on test execution order.
+    """
+    from datetime import datetime
+
+    from sqlalchemy import insert, select
+
+    from app.db import engine as _engine
+    from app.models import engines as engines_table, workspace_engines
+
+    now = datetime.utcnow()
+    with _engine.begin() as conn:
+        rows = conn.execute(
+            select(engines_table.c.id, engines_table.c.key)
+            .where(engines_table.c.enabled)
+        ).mappings().all()
+        existing = {
+            row['engine_id']
+            for row in conn.execute(
+                select(workspace_engines.c.engine_id)
+                .where(workspace_engines.c.workspace_id == workspace_id)
+            ).mappings()
+        }
+        for row in rows:
+            if row['id'] in existing:
+                continue
+            conn.execute(insert(workspace_engines).values(
+                workspace_id=workspace_id, engine_id=row['id'],
+                enabled=row['key'] in keys, created_at=now, updated_at=now,
+            ))
 
 def set_extraction(answer_id, *, brand_mentioned, brand_cited, brand_rank=None,
                    version='test'):

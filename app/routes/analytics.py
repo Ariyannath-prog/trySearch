@@ -24,13 +24,16 @@ from sqlalchemy import (
 )
 
 from app.auth import analytics_user_id
+from app.analytics_filters import FilterError, available_regions, parse_filters
 from app.db import engine
 from app.metrics import (
     analytics_report,
     citation_domain_rollup,
+    citation_listing,
     competitor_citation_gaps,
 )
 from app.models import memberships, analytics_answer_sources, analytics_audit_findings, analytics_audit_jobs, analytics_audit_pages, competitors, analytics_content_opportunities, workspaces, analytics_prompt_scan_runs, analytics_provider_answers, analytics_rag_chunks, analytics_rag_documents, analytics_rag_insights, analytics_scan_schedules, analytics_site_audits, analytics_sitemaps, analytics_topics, analytics_tracked_prompts, gsc_connections, gsc_properties, gsc_query_rows, gsc_sync_runs
+from app.scanning import enabled_engines
 from app.tenancy import current_user_id, default_org_for_user, require_workspace, workspaces_for_user
 from app.utils import normalise_domain, normalise_website_url, row_to_dict, to_iso
 
@@ -156,9 +159,19 @@ def analytics_report_endpoint(workspace_id):
     access, error = require_workspace(workspace_id)
     if error:
         return error
-    report = analytics_report(workspace_id, access.user_id)
+    try:
+        filters = parse_filters(request.args)
+    except FilterError as error:
+        return jsonify({'error': str(error)}), 400
+    report = analytics_report(workspace_id, access.user_id, filters=filters)
     if not report:
         return jsonify({'error': 'Workspace not found.'}), 404
+    with engine.connect() as conn:
+        available_engines = [dict(row) for row, _adapter in enabled_engines(conn, workspace_id=workspace_id)]
+    report['available_filters'] = {
+        'regions': available_regions(workspace_id),
+        'engines': [{'id': e['id'], 'key': e['key'], 'display_name': e['display_name']} for e in available_engines],
+    }
     return jsonify(report)
 
 
@@ -176,10 +189,13 @@ def analytics_citations_endpoint(workspace_id):
     with engine.connect() as conn:
         rollup = citation_domain_rollup(workspace_id, conn)
         gaps = competitor_citation_gaps(workspace_id, conn)
+        citations = citation_listing(workspace_id, conn)
 
     return jsonify({
         'total_citations': rollup['total_citations'],
         'domains': rollup['domains'],
         # The actionable half: domains citing a rival that have never cited you.
         'competitor_gaps': gaps,
+        # Per-URL grain: the Citations & Sources page's main table/drawer.
+        'citations': citations,
     })

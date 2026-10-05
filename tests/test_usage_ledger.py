@@ -17,7 +17,7 @@ os.environ['APP_ENV'] = 'development'
 os.environ['SECRET_KEY'] = 'usage-ledger-test-secret'
 
 import server_pg  # noqa: E402
-from conftest import create_workspace  # noqa: E402
+from conftest import create_workspace, pin_workspace_engines  # noqa: E402
 
 from sqlalchemy import insert, select, update  # noqa: E402
 from werkzeug.security import generate_password_hash  # noqa: E402
@@ -122,6 +122,9 @@ class LedgerRowTests(unittest.TestCase):
         cls.user = make_user('ledger_rows')
         cls.workspace = create_workspace(user_id=cls.user, domain='rows.example',
                                          brand_name='Rows')
+        # Order-independence: other modules leave extra enabled engine rows
+        # behind, which would multiply the per-engine counts asserted below.
+        pin_workspace_engines(cls.workspace)
         cls.org = org_of(cls.workspace)
         add_prompts(cls.workspace, 3, 'rows')
 
@@ -163,6 +166,9 @@ class FailureStillMeteredTests(unittest.TestCase):
         cls.user = make_user('ledger_failure')
         cls.workspace = create_workspace(user_id=cls.user, domain='failure.example',
                                          brand_name='Failure')
+        # Order-independence: other modules leave extra enabled engine rows
+        # behind, which would multiply the per-engine counts asserted below.
+        pin_workspace_engines(cls.workspace)
         cls.org = org_of(cls.workspace)
         add_prompts(cls.workspace, 2, 'failure')
 

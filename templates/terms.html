@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Service — trySearch</title>
+<meta name="description" content="The terms governing use of trySearch, the AI-search visibility and answer-engine-optimisation platform.">
+<link rel="apple-touch-icon" href="/trysearch-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..600&family=Martian+Mono:wght@300;400;500;600&display=swap">
+{# The platform design system. Same tokens index.html and the app shell use, so
+   this page inherits the brand palette and light/dark behaviour rather than
+   inventing its own. #}
+<link rel="stylesheet" href="/static/css/tokens.css">
+<style>
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--ground);color:var(--ink);
+    font-family:var(--font-ui);font-size:15px;line-height:1.7;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--brand-ink);text-underline-offset:2px}
+  a:hover{color:var(--brand)}
+
+  .topbar{
+    border-bottom:1px solid var(--rule);background:var(--surface);
+    position:sticky;top:0;z-index:5;
+  }
+  .topbar .inner{
+    max-width:var(--measure);margin:0 auto;padding:14px var(--gut);
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+  }
+  .wordmark{
+    font-weight:700;letter-spacing:-.02em;font-size:16px;color:var(--ink);
+    text-decoration:none;
+  }
+  .wordmark span{color:var(--brand)}
+  .topnav{display:flex;gap:18px;font-size:13px}
+  .topnav a{color:var(--ink-3);text-decoration:none}
+  .topnav a:hover{color:var(--ink)}
+
+  :root{--measure:64rem}
+
+  main{max-width:var(--measure);margin:0 auto;padding:clamp(28px,5vw,56px) var(--gut) 64px}
+
+  .eyebrow{
+    font-family:var(--font-data);font-size:10px;font-weight:500;
+    text-transform:uppercase;letter-spacing:.14em;color:var(--brand);
+    margin:0 0 10px;
+  }
+  h1{
+    font-size:clamp(1.9rem,5vw,2.6rem);line-height:1.15;letter-spacing:-.03em;
+    margin:0 0 12px;font-weight:700;
+  }
+  .lede{color:var(--ink-2);font-size:clamp(1rem,2.2vw,1.1rem);margin:0 0 22px;max-width:46rem}
+
+  .meta{
+    display:flex;flex-wrap:wrap;gap:10px;align-items:center;
+    padding:12px 16px;border:1px solid var(--rule);border-radius:var(--r);
+    background:var(--surface);margin:0 0 36px;
+  }
+  .meta dt{
+    font-family:var(--font-data);font-size:10px;text-transform:uppercase;
+    letter-spacing:.1em;color:var(--ink-4);margin:0;
+  }
+  .meta dd{margin:0 20px 0 0;font-size:13px;color:var(--ink-2)}
+  .meta dd strong{color:var(--ink);font-weight:600}
+
+  .toc{
+    border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);
+    padding:18px 20px;margin:0 0 40px;
+  }
+  .toc h2{
+    font-family:var(--font-data);font-size:10px;font-weight:500;
+    text-transform:uppercase;letter-spacing:.12em;color:var(--ink-4);
+    margin:0 0 12px;
+  }
+  .toc ol{margin:0;padding-left:1.3em;columns:2;column-gap:32px}
+  .toc li{margin:0 0 7px;font-size:13.5px;break-inside:avoid}
+  .toc a{color:var(--ink-2);text-decoration:none}
+  .toc a:hover{color:var(--brand);text-decoration:underline}
+
+  section{
+    padding-top:26px;margin-top:26px;border-top:1px solid var(--rule);
+    scroll-margin-top:80px;
+  }
+  section:first-of-type{border-top:0;margin-top:0;padding-top:0}
+  section h2{
+    font-size:1.12rem;line-height:1.35;letter-spacing:-.01em;
+    margin:0 0 12px;font-weight:650;display:flex;gap:12px;align-items:baseline;
+  }
+  section h2 .num{
+    font-family:var(--font-data);font-size:11px;font-weight:500;
+    color:var(--brand);flex:none;padding-top:3px;
+  }
+  section p{margin:0 0 12px;color:var(--ink-2);max-width:46rem}
+  section p:last-child{margin-bottom:0}
+
+  footer{
+    border-top:1px solid var(--rule);background:var(--surface);
+    margin-top:56px;
+  }
+  footer .inner{
+    max-width:var(--measure);margin:0 auto;padding:26px var(--gut);
+    display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;
+    font-size:13px;color:var(--ink-3);
+  }
+  footer a{color:var(--ink-2);text-decoration:none}
+  footer a:hover{color:var(--brand)}
+  .footlinks{display:flex;gap:18px;flex-wrap:wrap}
+
+  @media(max-width:640px){
+    .toc ol{columns:1}
+    .meta{flex-direction:column;align-items:flex-start;gap:4px}
+    .meta dd{margin-right:0}
+  }
+  @media print{
+    .topbar,.toc,footer{display:none}
+    body{background:#fff;color:#000}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="inner">
+    <a class="wordmark" href="/">try<span>Search</span></a>
+    <nav class="topnav">
+      <a href="/pricing">Pricing</a>
+      <a href="/login">Log in</a>
+      <a href="/signup">Sign up</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <p class="eyebrow">Legal</p>
+  <h1>Terms of Service</h1>
+  <p class="lede">These terms govern your use of trySearch. They explain what the
+    platform measures, what it cannot promise, and what each of us is responsible
+    for.</p>
+
+  <dl class="meta">
+    <dt>Version</dt>
+    <dd><strong>{{ version }}</strong></dd>
+    <dt>Effective</dt>
+    <dd><strong>{{ effective_date }}</strong></dd>
+    <dt>Sections</dt>
+    <dd>{{ sections | length }}</dd>
+  </dl>
+
+  <nav class="toc" aria-label="Contents">
+    <h2>Contents</h2>
+    <ol>
+      {% for heading, _paragraphs in sections %}
+      <li><a href="#s{{ loop.index }}">{{ heading }}</a></li>
+      {% endfor %}
+    </ol>
+  </nav>
+
+  {% for heading, paragraphs in sections %}
+  <section id="s{{ loop.index }}">
+    <h2><span class="num">{{ '%02d' % loop.index }}</span><span>{{ heading }}</span></h2>
+    {% for paragraph in paragraphs %}
+    <p>{{ paragraph }}</p>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</main>
+
+<footer>
+  <div class="inner">
+    <div>Questions? <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></div>
+    <div class="footlinks">
+      <a href="/signup">Create an account</a>
+      <a href="/login">Log in</a>
+      <a href="/">Home</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

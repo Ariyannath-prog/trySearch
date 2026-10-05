@@ -1,0 +1,43 @@
+/* Design tokens, lifted verbatim from index.html's :root block.
+   Single source of truth for the authenticated app shell's visual language. */
+:root{
+  --ground:#F2F1F5; --surface:#FCFBFD; --surface-2:#EDEBF1; --surface-3:#E4E1E9;
+  --ink:#17151C; --ink-2:#4A4553; --ink-3:#6B6577; --ink-4:#918B9C;
+  --rule:#E0DDE6; --rule-2:#CFCAD8;
+  --brand:#C4185C; --brand-ink:#8E0F41; --brand-wash:#FBEAF1; --brand-edge:#F0C4D6;
+  --s1:#C4185C; --s2:#4B3FCB; --s3:#A8730B; --s4:#0F7FA8; --s5:#57A03C;
+  --q0:#F7F5F8; --q1:#F5DFE8; --q2:#EDB9CF; --q3:#DE85AB; --q4:#CB4A7F; --q5:#A81049;
+  --good:#0F7A3D; --good-wash:#E6F3EB;
+  --warn:#9A6400; --warn-wash:#F7EFDF;
+  --crit:#B0281B; --crit-wash:#F9EAE8;
+  --shadow:0 26px 60px -28px rgba(20,10,30,.26);
+  --font-ui:'Instrument Sans','Helvetica Neue',Arial,sans-serif;
+  --font-data:'Martian Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --r:3px; --gut:24px; --rail:236px;
+  --ease:cubic-bezier(.22,.72,.28,1);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0F0E13; --surface:#17161D; --surface-2:#1E1D26; --surface-3:#282631;
+  --ink:#ECEAF1; --ink-2:#BDB8C7; --ink-3:#948EA1; --ink-4:#6E687C;
+  --rule:#282631; --rule-2:#38353F;
+  --brand:#DB4A80; --brand-ink:#F2739F; --brand-wash:#2A1720; --brand-edge:#4A2434;
+  --s1:#DB4A80; --s2:#7B74DB; --s3:#B5852B; --s4:#1D97BE; --s5:#5AA544;
+  --q0:#1B1A22; --q1:#33202B; --q2:#4E2739; --q3:#77304F; --q4:#A83C67; --q5:#DB4A80;
+  --good:#45B26B; --good-wash:#15281C; --warn:#D19A2E; --warn-wash:#2A2114;
+  --crit:#E5645A; --crit-wash:#2C1917;
+  --shadow:0 26px 60px -26px rgba(0,0,0,.6);
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --ground:#0F0E13; --surface:#17161D; --surface-2:#1E1D26; --surface-3:#282631;
+  --ink:#ECEAF1; --ink-2:#BDB8C7; --ink-3:#948EA1; --ink-4:#6E687C;
+  --rule:#282631; --rule-2:#38353F;
+  --brand:#DB4A80; --brand-ink:#F2739F; --brand-wash:#2A1720; --brand-edge:#4A2434;
+  --s1:#DB4A80; --s2:#7B74DB; --s3:#B5852B; --s4:#1D97BE; --s5:#5AA544;
+  --q0:#1B1A22; --q1:#33202B; --q2:#4E2739; --q3:#77304F; --q4:#A83C67; --q5:#DB4A80;
+  --good:#45B26B; --good-wash:#15281C; --warn:#D19A2E; --warn-wash:#2A2114;
+  --crit:#E5645A; --crit-wash:#2C1917;
+  --shadow:0 26px 60px -26px rgba(0,0,0,.6);
+  color-scheme:dark;
+}

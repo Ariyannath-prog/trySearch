@@ -23,7 +23,7 @@ from sqlalchemy import (
 import os
 
 from app.db import engine
-from app.jobs import create_analytics_job, run_site_audit_job, update_analytics_job
+from app.jobs import create_analytics_job, run_sentiment_classification_job, run_site_audit_job, update_analytics_job
 from app.models import analytics_audit_jobs, workspaces, analytics_scan_schedules
 from app.scanning import next_schedule_time, run_prompt_scan_job
 
@@ -84,6 +84,9 @@ def run_scheduled_analytics_command():
                 processed += 1
             elif job_type == 'prompt_scan':
                 run_prompt_scan_job(job_id)
+                processed += 1
+            elif job_type == 'sentiment_classification':
+                run_sentiment_classification_job(job_id)
                 processed += 1
         except Exception as error:
             # architecture-spec 4 rule 2: retry limit zero at the job level for

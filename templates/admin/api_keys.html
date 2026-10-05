@@ -1,0 +1,499 @@
+{% extends "admin/layout.html" %}
+{% block title %}API Keys · trySearch Admin{% endblock %}
+
+{% block head %}
+<style>
+  .key-toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
+  .key-toolbar input,.key-toolbar select,.key-form input,.key-form select{
+    background:#0f0c14;border:1px solid var(--border);color:var(--text);
+    border-radius:10px;padding:11px 13px;outline:none;font:inherit;font-size:12px
+  }
+  .key-toolbar input{flex:1;min-width:240px}
+  .key-toolbar select{min-width:145px}
+  .key-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field{display:grid;gap:6px}
+  .field.full{grid-column:1/-1}
+  .field label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .field input,.field select{width:100%}
+  .help{font-size:10px;color:var(--muted);line-height:1.5}
+  .btn{border:1px solid var(--border);background:#17131d;color:var(--text);border-radius:10px;padding:10px 14px;cursor:pointer;font:inherit;font-size:12px}
+  .btn:hover{border-color:#5d5068}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px}
+  .key-table-wrap{overflow:auto}
+  .key-table{width:100%;border-collapse:collapse;min-width:900px}
+  .key-table th,.key-table td{padding:13px 12px;border-bottom:1px solid var(--border);text-align:left;font-size:12px}
+  .key-table th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+  .key-table tbody tr{cursor:pointer}
+  .key-table tbody tr:hover{background:#17131d}
+  .muted{color:var(--muted)}
+  .pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#211b28;color:#d8cddd;font-size:10px}
+  .pill.good{background:rgba(70,210,138,.1);color:#7ee8ae}
+  .pill.bad{background:rgba(255,105,127,.1);color:#ffabb8}
+  .error{padding:12px;border:1px solid rgba(255,105,127,.4);background:rgba(255,105,127,.08);color:#ffd0d8;border-radius:10px;font-size:12px;margin-bottom:14px}
+  .success{padding:12px;border:1px solid rgba(70,210,138,.35);background:rgba(70,210,138,.08);color:#9ef0c1;border-radius:10px;font-size:12px;margin-bottom:14px}
+  .empty{padding:30px;text-align:center;color:var(--muted)}
+  .drawer-head{display:flex;justify-content:space-between;gap:15px;align-items:flex-start;margin-bottom:16px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+  .switch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .switch input{width:16px;height:16px}
+  @media(max-width:700px){
+    .key-form{grid-template-columns:1fr}
+    .field.full{grid-column:auto}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top">
+  <div>
+    <div class="eyebrow">AI Infrastructure</div>
+    <h1>API Keys</h1>
+    <div class="sub">Store provider credentials encrypted at rest. The actual secret is never returned to the browser after submission.</div>
+  </div>
+</div>
+
+<div id="messageBox"></div>
+
+<div class="panel">
+  <div class="drawer-head">
+    <div>
+      <h2 style="margin:0 0 5px;font-size:18px">Add provider credential</h2>
+      <div class="muted">Select an enabled API-key provider from the platform provider catalog.</div>
+    </div>
+  </div>
+
+  <form class="key-form" id="createForm">
+    <div class="field">
+      <label for="providerId">Provider</label>
+      <select id="providerId" required>
+        <option value="">Loading providers…</option>
+      </select>
+      <div class="help">Only enabled providers using API-key authentication are shown here.</div>
+    </div>
+
+    <div class="field">
+      <label for="label">Label</label>
+      <input id="label" required maxlength="160" placeholder="Production">
+    </div>
+
+    <div class="field">
+      <label for="engineId">Engine</label>
+      <select id="engineId">
+        <option value="">Not linked</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="secret">Secret / API key</label>
+      <input id="secret" type="password" required autocomplete="new-password" placeholder="Enter provider secret">
+      <div class="help">The secret is encrypted server-side before database storage.</div>
+    </div>
+
+    <div class="field full">
+      <label class="switch">
+        <input id="enabled" type="checkbox" checked>
+        Enable credential
+      </label>
+    </div>
+
+    <div class="field full">
+      <button class="btn primary" type="submit">Save credential</button>
+    </div>
+  </form>
+</div>
+
+<div style="height:16px"></div>
+
+<div class="key-toolbar">
+  <input id="keySearch" type="search" placeholder="Search provider, label, or engine">
+  <select id="keyStatus">
+    <option value="all">All statuses</option>
+    <option value="enabled">Enabled</option>
+    <option value="disabled">Disabled</option>
+  </select>
+  <button class="btn" id="refreshBtn">Refresh</button>
+</div>
+
+<div class="panel">
+  <div class="key-table-wrap">
+    <table class="key-table">
+      <thead>
+        <tr>
+          <th>Provider</th>
+          <th>Label</th>
+          <th>Engine</th>
+          <th>Secret</th>
+          <th>Status</th>
+          <th>Last tested</th>
+          <th>Updated</th>
+        </tr>
+      </thead>
+      <tbody id="keyRows">
+        <tr><td colspan="7" class="empty">Loading credentials…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div style="height:16px"></div>
+
+<div class="panel" id="detailPanel" style="display:none">
+  <div class="drawer-head">
+    <div>
+      <div class="eyebrow">Credential detail</div>
+      <h2 id="detailTitle" style="margin:5px 0;font-size:20px">Credential</h2>
+      <div class="muted" id="detailSubtitle"></div>
+    </div>
+    <button class="btn" id="closeDetail">Close</button>
+  </div>
+
+  <div id="detailMessage"></div>
+  <div class="key-form" id="editFormWrap"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const rows = document.getElementById('keyRows');
+  const search = document.getElementById('keySearch');
+  const status = document.getElementById('keyStatus');
+  const messageBox = document.getElementById('messageBox');
+  const createForm = document.getElementById('createForm');
+  const providerSelect = document.getElementById('providerId');
+  const engineSelect = document.getElementById('engineId');
+  const detailPanel = document.getElementById('detailPanel');
+  const detailTitle = document.getElementById('detailTitle');
+  const detailSubtitle = document.getElementById('detailSubtitle');
+  const detailMessage = document.getElementById('detailMessage');
+  const editFormWrap = document.getElementById('editFormWrap');
+
+  const esc = (value) => String(value ?? '')
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replace(/'/g,'&#039;');
+
+  const dateText = (value) => value ? new Date(value).toLocaleString() : '—';
+
+  function showMessage(text, good=false){
+    messageBox.className = good ? 'success' : 'error';
+    messageBox.textContent = text;
+  }
+
+  async function loadProviders(){
+    try{
+      const res = await fetch('/api/admin/providers', {credentials:'same-origin'});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load providers.');
+
+      const apiProviders = (data.providers || []).filter(
+        p => p.auth_type === 'api_key' && p.enabled
+      );
+
+      providerSelect.innerHTML =
+        '<option value="">Select provider…</option>' +
+        apiProviders.map(p =>
+          `<option value="${p.id}">${esc(p.display_name)} (${esc(p.key)})</option>`
+        ).join('');
+
+      if(!apiProviders.length){
+        providerSelect.innerHTML = '<option value="">No API-key providers available</option>';
+      }
+    }catch(err){
+      providerSelect.innerHTML = '<option value="">Provider loading failed</option>';
+      showMessage(err.message);
+    }
+  }
+
+  async function loadEngines(){
+    try{
+      const res = await fetch('/api/admin/engines', {credentials:'same-origin'});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load engines.');
+
+      engineSelect.innerHTML =
+        '<option value="">Not linked</option>' +
+        data.engines.map(e =>
+          `<option value="${e.id}">${esc(e.display_name)} (${esc(e.key)})</option>`
+        ).join('');
+    }catch(err){
+      showMessage(err.message);
+    }
+  }
+
+  async function loadKeys(){
+    rows.innerHTML = '<tr><td colspan="7" class="empty">Loading credentials…</td></tr>';
+
+    try{
+      const params = new URLSearchParams();
+      if(search.value.trim()) params.set('search', search.value.trim());
+      if(status.value !== 'all') params.set('status', status.value);
+
+      const res = await fetch('/api/admin/api-keys?' + params.toString(), {
+        credentials:'same-origin'
+      });
+
+      const data = await res.json();
+
+      if(!res.ok) throw new Error(data.error || 'Failed to load credentials.');
+
+      if(!data.credentials.length){
+        rows.innerHTML = '<tr><td colspan="7" class="empty">No provider credentials stored.</td></tr>';
+        return;
+      }
+
+      rows.innerHTML = data.credentials.map(c => `
+        <tr data-id="${c.id}">
+          <td><strong>${esc(c.provider_display_name || c.provider_key || c.provider)}</strong><div class="muted">${esc(c.provider_auth_type || '')}</div></td>
+          <td>${esc(c.label)}</td>
+          <td>${esc(c.engine_display_name || c.engine_key || 'Not linked')}</td>
+          <td>${esc(c.secret_hint || '••••')}</td>
+          <td>${c.enabled
+            ? '<span class="pill good">Enabled</span>'
+            : '<span class="pill bad">Disabled</span>'}</td>
+          <td>${dateText(c.last_tested_at)}</td>
+          <td>${dateText(c.updated_at)}</td>
+        </tr>
+      `).join('');
+
+      rows.querySelectorAll('tr[data-id]').forEach(row => {
+        row.addEventListener('click', () => loadDetail(Number(row.dataset.id)));
+      });
+    }catch(err){
+      rows.innerHTML = '';
+      showMessage(err.message);
+    }
+  }
+
+  async function loadDetail(id){
+    detailPanel.style.display = 'block';
+    detailMessage.innerHTML = '';
+    editFormWrap.innerHTML = '<div class="muted">Loading…</div>';
+    detailPanel.scrollIntoView({behavior:'smooth',block:'start'});
+
+    try{
+      const res = await fetch('/api/admin/api-keys/' + id, {
+        credentials:'same-origin'
+      });
+
+      const data = await res.json();
+
+      if(!res.ok) throw new Error(data.error || 'Failed to load credential.');
+
+      const c = data.credential;
+
+      detailTitle.textContent = c.label;
+      detailSubtitle.textContent = (c.provider_display_name || c.provider_key || c.provider) + ' · Credential #' + c.id;
+
+      editFormWrap.innerHTML = `
+        <div class="field">
+          <label>Provider</label>
+          <input value="${esc(c.provider)}" disabled>
+        </div>
+
+        <div class="field">
+          <label>Label</label>
+          <input id="editLabel" maxlength="160" value="${esc(c.label)}">
+        </div>
+
+        <div class="field">
+          <label>Engine</label>
+          <select id="editEngine">${engineSelect.innerHTML}</select>
+        </div>
+
+        <div class="field">
+          <label>Replace secret</label>
+          <input id="editSecret" type="password" autocomplete="new-password" placeholder="Leave blank to keep current secret">
+        </div>
+
+        <div class="field full">
+          <label class="switch">
+            <input id="editEnabled" type="checkbox" ${c.enabled ? 'checked' : ''}>
+            Enabled
+          </label>
+        </div>
+
+        <div class="field full">
+          <div class="help">
+            Current stored secret: ${esc(c.secret_hint || '••••')}.
+            The actual secret is never returned.
+          </div>
+        </div>
+
+        <div class="field full actions">
+          <button class="btn" id="testConnection">Test Connection</button>
+          <button class="btn primary" id="saveEdit">Save changes</button>
+          <button class="btn" id="cancelEdit">Close</button>
+        </div>
+      `;
+
+      const editEngine = document.getElementById('editEngine');
+      editEngine.value = c.engine_id === null ? '' : String(c.engine_id);
+
+      document.getElementById('saveEdit').addEventListener('click', async () => {
+        const payload = {
+          label: document.getElementById('editLabel').value.trim(),
+          engine_id: editEngine.value ? Number(editEngine.value) : null,
+          enabled: document.getElementById('editEnabled').checked
+        };
+
+        const secret = document.getElementById('editSecret').value;
+
+        if(secret) payload.secret = secret;
+
+        const updateRes = await adminFetch('/api/admin/api-keys/' + id, {
+          method:'PATCH',
+          credentials:'same-origin',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify(payload)
+        });
+
+        const result = await updateRes.json();
+
+        if(!updateRes.ok){
+          detailMessage.className = 'error';
+          detailMessage.textContent = result.error || 'Update failed.';
+          return;
+        }
+
+        showMessage('Credential updated.', true);
+        await loadKeys();
+        await loadDetail(id);
+      });
+
+      document.getElementById('testConnection').addEventListener('click', async () => {
+        const button = document.getElementById('testConnection');
+
+        button.disabled = true;
+        button.textContent = 'Testing…';
+        detailMessage.className = '';
+        detailMessage.textContent = 'Testing the provider connection…';
+
+        try {
+          const testRes = await adminFetch('/api/admin/api-keys/' + id + '/test', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const testResult = await testRes.json();
+
+          if(!testRes.ok) {
+            detailMessage.className = 'error';
+            detailMessage.textContent =
+              testResult.error ||
+              testResult.message ||
+              'Connection test failed.';
+            return;
+          }
+
+          if(testResult.status !== 'ok') {
+            detailMessage.className = 'error';
+            detailMessage.textContent =
+              testResult.error ||
+              testResult.message ||
+              'Connection test did not succeed.';
+            return;
+          }
+
+          const model = testResult.model_version
+            ? ' · Model: ' + testResult.model_version
+            : '';
+
+          const latency = Number.isFinite(testResult.latency_ms)
+            ? ' · ' + testResult.latency_ms + ' ms'
+            : '';
+
+          const citations = Number.isFinite(testResult.citation_count)
+            ? ' · ' + testResult.citation_count + ' citation(s)'
+            : '';
+
+          detailMessage.className = 'success';
+          detailMessage.textContent =
+            'Connection successful' + model + latency + citations + '.';
+
+          await loadKeys();
+
+        } catch(err) {
+          detailMessage.className = 'error';
+          detailMessage.textContent =
+            err.message || 'Connection test failed.';
+        } finally {
+          button.disabled = false;
+          button.textContent = 'Test Connection';
+        }
+      });
+
+      document.getElementById('cancelEdit').addEventListener('click', () => {
+        detailPanel.style.display = 'none';
+      });
+
+    }catch(err){
+      detailMessage.className = 'error';
+      detailMessage.textContent = err.message;
+    }
+  }
+
+  createForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    messageBox.innerHTML = '';
+
+    const providerValue = providerSelect.value;
+
+    if(!providerValue){
+      showMessage('Please select a provider.');
+      providerSelect.focus();
+      return;
+    }
+
+    const payload = {
+      provider_id: Number(providerValue),
+      label: document.getElementById('label').value.trim(),
+      engine_id: engineSelect.value ? Number(engineSelect.value) : null,
+      secret: document.getElementById('secret').value,
+      enabled: document.getElementById('enabled').checked
+    };
+
+    const res = await adminFetch('/api/admin/api-keys', {
+      method:'POST',
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+
+    if(!res.ok){
+      showMessage(data.error || 'Credential creation failed.');
+      return;
+    }
+
+    createForm.reset();
+    document.getElementById('enabled').checked = true;
+    showMessage('Provider credential saved securely.', true);
+    await loadKeys();
+  });
+
+  document.getElementById('refreshBtn').addEventListener('click', loadKeys);
+
+  document.getElementById('closeDetail').addEventListener('click', () => {
+    detailPanel.style.display = 'none';
+  });
+
+  search.addEventListener('keydown', (event) => {
+    if(event.key === 'Enter') loadKeys();
+  });
+
+  status.addEventListener('change', loadKeys);
+
+  loadProviders();
+  loadEngines();
+  loadKeys();
+})();
+</script>
+{% endblock %}

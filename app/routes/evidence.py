@@ -22,13 +22,14 @@ from sqlalchemy import (
     text,
 )
 import json
-import os
 
 from app.db import engine
+from app.analytics_filters import FilterError, available_regions, parse_filters
 from app.costs import ceiling_status, refusal_payload
 from app.jobs import create_analytics_job
-from app.metrics import latest_prompt_evidence
+from app.metrics import latest_prompt_evidence, mention_listing, recommendation_intelligence, scan_history
 from app.models import analytics_answer_sources, analytics_audit_jobs, analytics_prompt_scan_runs, analytics_provider_answers, analytics_topics, analytics_tracked_prompts
+from app.scanning import enabled_engines
 from app.tenancy import require_workspace
 from app.utils import row_to_dict
 
@@ -40,9 +41,17 @@ def start_analytics_prompt_scan(workspace_id):
     if error:
         return error
     user_id, project = access.user_id, access.workspace
-    if not os.environ.get('PERPLEXITY_API_KEY'):
-        return jsonify({'error': 'Perplexity is not configured. Add PERPLEXITY_API_KEY on the server.'}), 503
     with engine.connect() as conn:
+        # Provider-agnostic and DB-backed, matching run_prompt_scan_job's own
+        # check - no engine name is ever hardcoded here. Which engine actually
+        # answers, and whether its credential works, is decided per-prompt at
+        # execution time (app/scanning.py), not pre-guessed here. Scoped to
+        # this workspace's own engine selection (workspace_engines), the same
+        # scope run_prompt_scan_job uses.
+        if not enabled_engines(conn, workspace_id=workspace_id):
+            return jsonify({'error': 'No AI engine is available for this project. Choose at '
+                                      'least one in onboarding, or ask an admin to configure '
+                                      'a provider credential.'}), 503
         prompt_count = conn.execute(select(func.count()).select_from(analytics_tracked_prompts).where(
             (analytics_tracked_prompts.c.workspace_id == workspace_id) &
             (analytics_tracked_prompts.c.active.is_(True))
@@ -76,7 +85,11 @@ def analytics_evidence_endpoint(workspace_id):
         run_id = int(request.args['run_id']) if request.args.get('run_id') else None
     except ValueError:
         return jsonify({'error': 'run_id must be an integer.'}), 400
-    evidence = latest_prompt_evidence(workspace_id, run_id)
+    try:
+        filters = parse_filters(request.args)
+    except FilterError as error:
+        return jsonify({'error': str(error)}), 400
+    evidence = latest_prompt_evidence(workspace_id, run_id, filters=filters)
     with engine.connect() as conn:
         active_job = conn.execute(select(analytics_audit_jobs).where(
             (analytics_audit_jobs.c.workspace_id == workspace_id) &
@@ -86,6 +99,42 @@ def analytics_evidence_endpoint(workspace_id):
     return jsonify({
         'project': row_to_dict(project), 'evidence': evidence,
         'active_job': row_to_dict(active_job) if active_job else None,
+    })
+
+@evidence_bp.route('/api/analytics/projects/<int:workspace_id>/mentions', methods=['GET'])
+def analytics_mentions_endpoint(workspace_id):
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    return jsonify({'project': row_to_dict(access.workspace),
+                    'mentions': mention_listing(workspace_id)})
+
+@evidence_bp.route('/api/analytics/projects/<int:workspace_id>/recommendations', methods=['GET'])
+def analytics_recommendations_endpoint(workspace_id):
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    return jsonify({'project': row_to_dict(access.workspace),
+                    'recommendations': recommendation_intelligence(workspace_id)})
+
+@evidence_bp.route('/api/analytics/projects/<int:workspace_id>/scans', methods=['GET'])
+def analytics_scan_history_endpoint(workspace_id):
+    access, error = require_workspace(workspace_id)
+    if error:
+        return error
+    try:
+        filters = parse_filters(request.args)
+    except FilterError as error:
+        return jsonify({'error': str(error)}), 400
+    with engine.connect() as conn:
+        available_engines = [dict(row) for row, _adapter in enabled_engines(conn, workspace_id=workspace_id)]
+    return jsonify({
+        'project': row_to_dict(access.workspace),
+        'scans': scan_history(workspace_id, filters=filters),
+        'available_filters': {
+            'regions': available_regions(workspace_id),
+            'engines': [{'id': e['id'], 'key': e['key'], 'display_name': e['display_name']} for e in available_engines],
+        },
     })
 
 @evidence_bp.route('/api/analytics/projects/<int:workspace_id>/evidence/<int:answer_id>', methods=['GET'])

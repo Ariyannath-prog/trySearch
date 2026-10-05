@@ -1,0 +1,417 @@
+{% extends "admin/layout.html" %}
+{% block title %}Email · trySearch Admin{% endblock %}
+
+{% block head %}
+<style>
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px;margin-top:14px}
+  .panel h2{font-size:17px;margin:0 0 4px}
+  .panel .hint{color:var(--muted);font-size:11px;line-height:1.6;margin:0 0 14px}
+  .btn{border:1px solid var(--border);background:#17131d;color:var(--text);border-radius:10px;padding:10px 14px;cursor:pointer;font:inherit;font-size:12px}
+  .btn:hover{border-color:#5d5068}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.danger{border-color:rgba(255,105,127,.35);color:#ffabb8}
+  .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field.span2{grid-column:1/-1}
+  .field label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .field input,.field select{background:#0f0c14;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;font-size:12px;outline:none}
+  .field input:focus,.field select:focus{border-color:#5d5068}
+  .field input:disabled,.field select:disabled{opacity:.5}
+  .field .note{font-size:10px;color:var(--muted);line-height:1.5}
+  .pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:#211b28;color:#d8cddd;font-size:10px}
+  .pill.good{background:rgba(70,210,138,.1);color:#7ee8ae}
+  .pill.bad{background:rgba(255,105,127,.1);color:#ffabb8}
+  .pill.warn{background:rgba(237,59,120,.1);color:#ff91ba}
+  .status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .status-item{padding:10px;border:1px solid var(--border);border-radius:10px;background:#121018}
+  .status-item .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .status-item .v{margin-top:5px;font-size:12px;word-break:break-word}
+  .pw-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+  .pw-row .field{flex:1;min-width:180px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+  .error{padding:12px;border:1px solid rgba(255,105,127,.4);background:rgba(255,105,127,.08);color:#ffd0d8;border-radius:10px;font-size:12px;margin-bottom:12px}
+  .ok{padding:12px;border:1px solid rgba(70,210,138,.4);background:rgba(70,210,138,.08);color:#b6f2d2;border-radius:10px;font-size:12px;margin-bottom:12px}
+  .warnbar{padding:11px 13px;border:1px solid rgba(237,59,120,.3);background:rgba(237,59,120,.07);color:#ffc2d9;border-radius:10px;font-size:11px;line-height:1.6;margin:12px 0}
+  @media(max-width:860px){.form-grid{grid-template-columns:1fr}.status-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="top">
+  <div>
+    <div class="eyebrow">Platform</div>
+    <h1>Email</h1>
+    <div class="sub">The one outbound email provider for the whole application.
+      Signup confirmation uses it today; password reset, alerts and scheduled
+      reports will use the same service. Credentials are encrypted at rest and are
+      never returned to this page.</div>
+  </div>
+</div>
+
+<div id="errorBox" class="error" style="display:none"></div>
+<div id="okBox" class="ok" style="display:none"></div>
+
+<div class="panel">
+  <h2>Effective status</h2>
+  <p class="hint">What the application would actually use for the next send. If
+    this says <code>environment</code>, SMTP variables in the server environment
+    are taking precedence over anything saved below.</p>
+  <div class="status-grid" id="statusGrid"></div>
+</div>
+
+<div class="panel">
+  <h2>Provider</h2>
+  <p class="hint">Choosing a provider fills in its usual host, port and security.
+    Every field stays editable.</p>
+  <div class="form-grid">
+    <div class="field">
+      <label for="f_delivery">Delivery method</label>
+      <select id="f_delivery"></select>
+      <span class="note">System mail hands off to this server's own MTA. External
+        SMTP connects to a relay.</span>
+    </div>
+    <div class="field">
+      <label for="f_provider">Provider</label>
+      <select id="f_provider"></select>
+      <span class="note" id="providerHint"></span>
+    </div>
+  </div>
+  <div class="warnbar" id="systemWarn" style="display:none">
+    System mail hands the message to this server's own MTA. trySearch cannot
+    verify it is delivered: the host needs a working mail system plus SPF, DKIM
+    and correct reverse DNS, or messages will commonly be rejected or treated as
+    spam. Use a dedicated provider unless you already run and monitor mail here.
+  </div>
+</div>
+
+<div class="panel" id="smtpPanel">
+  <h2>SMTP connection</h2>
+  <p class="hint">Used for every hosted provider — they differ only in these values.</p>
+  <div class="form-grid">
+    <div class="field">
+      <label for="f_host">SMTP host</label>
+      <input id="f_host" type="text" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="f_port">Port</label>
+      <input id="f_port" type="number" min="1" max="65535">
+    </div>
+    <div class="field">
+      <label for="f_security">Encryption</label>
+      <select id="f_security"></select>
+      <span class="note">STARTTLS for 587/2525, SSL/TLS for 465.</span>
+    </div>
+    <div class="field">
+      <label for="f_username">Username</label>
+      <input id="f_username" type="text" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field span2">
+      <div class="pw-row">
+        <div class="field">
+          <label for="f_password">Password</label>
+          <input id="f_password" type="password" autocomplete="new-password"
+                 placeholder="Leave blank to keep the stored password">
+          <span class="note" id="pwNote"></span>
+        </div>
+        <button class="btn danger" id="clearPwBtn" type="button">Remove stored password</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Sender</h2>
+  <p class="hint">The from address must be one your provider is authorised to send for,
+    or messages will be rejected.</p>
+  <div class="form-grid">
+    <div class="field">
+      <label for="f_from_name">From name</label>
+      <input id="f_from_name" type="text">
+    </div>
+    <div class="field">
+      <label for="f_from_email">From email</label>
+      <input id="f_from_email" type="email" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="f_reply_to">Reply-to (optional)</label>
+      <input id="f_reply_to" type="email" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="f_enabled">Status</label>
+      <select id="f_enabled">
+        <option value="false">Disabled</option>
+        <option value="true">Enabled</option>
+      </select>
+      <span class="note">While disabled, signup cannot send and will refuse rather
+        than create unconfirmable accounts.</span>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="saveBtn">Save settings</button>
+    <button class="btn" id="reloadBtn">Reload</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Diagnostics</h2>
+  <p class="hint">Both tests use the <em>saved</em> configuration, so what is
+    verified is what the application will use. Saving never sends anything on its own.</p>
+  <div class="actions" style="margin-top:0">
+    <button class="btn" id="testConnBtn">Test connection</button>
+  </div>
+  <div class="form-grid" style="margin-top:14px">
+    <div class="field span2">
+      <label for="f_test_to">Send a test email to</label>
+      <input id="f_test_to" type="email" placeholder="you@example.com" autocomplete="off">
+      <span class="note">Required. No test is ever sent without an address typed here.</span>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="testSendBtn">Send test email</button>
+  </div>
+  <div id="diagBox" style="margin-top:12px"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const errorBox = document.getElementById('errorBox');
+  const okBox = document.getElementById('okBox');
+  const diagBox = document.getElementById('diagBox');
+  const statusGrid = document.getElementById('statusGrid');
+  const providerSel = document.getElementById('f_provider');
+  const securitySel = document.getElementById('f_security');
+  const providerHint = document.getElementById('providerHint');
+  const systemWarn = document.getElementById('systemWarn');
+  const smtpPanel = document.getElementById('smtpPanel');
+  const pwNote = document.getElementById('pwNote');
+
+  const esc = (value) => String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+  const pill = (text, cls='') => '<span class="pill ' + cls + '">' + esc(text) + '</span>';
+  const $ = (id) => document.getElementById(id);
+
+  let providers = [];
+  let deliveryMethods = [];
+  let settings = null;
+
+  function show(el, message, cls){
+    el.className = cls;
+    el.textContent = message;
+    el.style.display = 'block';
+  }
+  function hide(...els){ els.forEach(el => { el.style.display = 'none'; }); }
+  function flash(el, message, cls){
+    show(el, message, cls);
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
+
+  function providerByKey(key){
+    return providers.find(p => p.key === key);
+  }
+
+  function renderStatus(status){
+    const modeCls = status.mode === 'configured' ? 'good'
+                  : status.mode === 'console' ? 'warn' : 'bad';
+    statusGrid.innerHTML = [
+      ['Mode', pill(status.mode, modeCls)],
+      ['Configuration source', esc(status.source || 'none')],
+      ['Delivery method', esc(status.transport || '—')],
+      ['Provider', esc(status.provider || '—')],
+      ['Host', esc(status.host || '—')],
+      ['Port', esc(status.port ?? '—')],
+      ['Security', esc(status.security || '—')],
+      ['Username set', status.username_set ? pill('Yes','good') : pill('No')],
+      ['Password set', status.password_set ? pill('Yes','good') : pill('No')],
+      ['From', esc(status.from_email || '—')]
+    ].map(([k,v]) => `
+      <div class="status-item"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>
+    `).join('');
+  }
+
+  /* The delivery method is the primary choice; the provider list is filtered to
+     the presets valid for it, so the two can never be saved in disagreement. */
+  function renderProviderOptions(){
+    const method = $('f_delivery').value;
+    const valid = providers.filter(p => p.transport === method);
+    const current = providerSel.value;
+    providerSel.innerHTML = valid
+      .map(p => `<option value="${esc(p.key)}">${esc(p.label)}</option>`).join('');
+    if(valid.some(p => p.key === current)) providerSel.value = current;
+  }
+
+  function applyTransport(){
+    const isSystem = $('f_delivery').value === 'system';
+    smtpPanel.style.display = isSystem ? 'none' : 'block';
+    systemWarn.style.display = isSystem ? 'block' : 'none';
+    const provider = providerByKey(providerSel.value);
+    providerHint.textContent = provider ? provider.hint : '';
+  }
+
+  /* Switching provider offers that provider's usual values. It never overwrites
+     a host the admin has already typed for the same provider. */
+  function applyPreset(){
+    const provider = providerByKey(providerSel.value);
+    if(!provider) return;
+    if(provider.transport !== 'system'){
+      if(provider.default_host) $('f_host').value = provider.default_host;
+      if(provider.default_port) $('f_port').value = provider.default_port;
+      if(provider.default_security) securitySel.value = provider.default_security;
+    }
+    applyTransport();
+  }
+
+  function fillForm(){
+    $('f_delivery').value = settings.delivery_method || 'smtp';
+    renderProviderOptions();
+    providerSel.value = settings.provider || providerSel.value || '';
+    $('f_host').value = settings.host || '';
+    $('f_port').value = settings.port ?? '';
+    securitySel.value = settings.security || 'starttls';
+    $('f_username').value = settings.username || '';
+    $('f_password').value = '';
+    $('f_from_name').value = settings.from_name || 'trySearch';
+    $('f_from_email').value = settings.from_email || '';
+    $('f_reply_to').value = settings.reply_to || '';
+    $('f_enabled').value = settings.enabled ? 'true' : 'false';
+    /* The stored secret is shown only as a mask; the API never sends its value. */
+    pwNote.textContent = settings.password_set
+      ? 'A password is stored (' + (settings.password_mask || '••••••••') +
+        '). Leave blank to keep it, or type a new one to replace it.'
+      : 'No password stored.';
+    $('clearPwBtn').disabled = !settings.password_set;
+    applyTransport();
+  }
+
+  function readForm(){
+    const body = {
+      delivery_method: $('f_delivery').value,
+      provider: providerSel.value,
+      enabled: $('f_enabled').value === 'true',
+      from_name: $('f_from_name').value.trim(),
+      from_email: $('f_from_email').value.trim(),
+      reply_to: $('f_reply_to').value.trim(),
+      host: $('f_host').value.trim(),
+      port: Number($('f_port').value || 0),
+      security: securitySel.value,
+      username: $('f_username').value.trim()
+    };
+    const password = $('f_password').value;
+    /* Only send a password when one was actually typed, so a blank field means
+       "keep the stored secret" rather than "clear it". */
+    if(password) body.password = password;
+    return body;
+  }
+
+  async function load(){
+    hide(errorBox, okBox);
+    try{
+      const res = await adminFetch('/api/admin/email-settings');
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load email settings.');
+      providers = data.providers || [];
+      deliveryMethods = data.delivery_methods || [];
+      settings = data.settings || {};
+      $('f_delivery').innerHTML = deliveryMethods
+        .map(m => `<option value="${esc(m.key)}">${esc(m.label)}</option>`).join('');
+      securitySel.innerHTML = (data.security_options || [])
+        .map(v => `<option value="${esc(v)}">${esc(
+          v === 'starttls' ? 'STARTTLS' : v === 'ssl' ? 'SSL/TLS' : 'None')}</option>`).join('');
+      fillForm();
+      renderStatus(data.status || {});
+    }catch(err){
+      show(errorBox, err.message, 'error');
+    }
+  }
+
+  async function save(){
+    hide(errorBox, okBox);
+    const btn = $('saveBtn');
+    btn.disabled = true;
+    try{
+      const res = await adminFetch('/api/admin/email-settings', {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(readForm())});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Could not save the settings.');
+      settings = data.settings;
+      fillForm();
+      renderStatus(data.status_effective || {});
+      flash(okBox, 'Settings saved. Nothing was emailed — use the test below.', 'ok');
+    }catch(err){
+      show(errorBox, err.message, 'error');
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  async function clearPassword(){
+    if(!confirm('Remove the stored SMTP password? Sending will fail until a new one is saved.')) return;
+    hide(errorBox, okBox);
+    try{
+      const res = await adminFetch('/api/admin/email-settings/password', {method:'DELETE'});
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Could not remove the password.');
+      settings = data.settings;
+      fillForm();
+      flash(okBox, 'Stored password removed.', 'ok');
+    }catch(err){
+      show(errorBox, err.message, 'error');
+    }
+  }
+
+  async function testConnection(){
+    diagBox.innerHTML = '<div class="ok" style="display:block">Testing connection…</div>';
+    try{
+      const res = await adminFetch('/api/admin/email-settings/test-connection', {method:'POST'});
+      const data = await res.json();
+      diagBox.innerHTML = '<div class="' + (data.ok ? 'ok' : 'error') +
+        '" style="display:block">' + esc(data.detail || data.error || '') + '</div>';
+      if(data.status) renderStatus(data.status);
+    }catch(err){
+      diagBox.innerHTML = '<div class="error" style="display:block">Network error during the test.</div>';
+    }
+  }
+
+  async function sendTest(){
+    const to = $('f_test_to').value.trim();
+    if(!to){
+      diagBox.innerHTML = '<div class="error" style="display:block">Enter an address to send the test to.</div>';
+      return;
+    }
+    diagBox.innerHTML = '<div class="ok" style="display:block">Sending…</div>';
+    try{
+      const res = await adminFetch('/api/admin/email-settings/test-email', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({to: to})});
+      const data = await res.json();
+      diagBox.innerHTML = '<div class="' + (data.ok ? 'ok' : 'error') +
+        '" style="display:block">' + esc(data.message || data.error || '') + '</div>';
+    }catch(err){
+      diagBox.innerHTML = '<div class="error" style="display:block">Network error while sending.</div>';
+    }
+  }
+
+  $('f_delivery').addEventListener('change', () => {
+    renderProviderOptions();
+    applyPreset();
+  });
+  providerSel.addEventListener('change', applyPreset);
+  $('saveBtn').addEventListener('click', save);
+  $('reloadBtn').addEventListener('click', load);
+  $('clearPwBtn').addEventListener('click', clearPassword);
+  $('testConnBtn').addEventListener('click', testConnection);
+  $('testSendBtn').addEventListener('click', sendTest);
+
+  load();
+})();
+</script>
+{% endblock %}

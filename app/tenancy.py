@@ -12,6 +12,12 @@ Two deliberate choices:
   for the operation gets **403**, because they can already see the thing.
 * Write access is inferred from the HTTP method by default. A route cannot forget to
   declare that it mutates, which is the failure mode a `write=True` argument invites.
+
+One role is narrower than org membership. `client_viewer` is an agency's end client,
+and the join below is on `memberships.org_id`, so membership alone would hand that
+client *every* workspace in the agency's organization - including other clients'. A
+client_viewer therefore additionally needs an explicit `workspace_access` row. The
+other three roles are unchanged: for them, org membership still grants the workspace.
 """
 
 from collections import namedtuple
@@ -26,6 +32,7 @@ from app.models import (
     content_documents,
     memberships,
     organizations,
+    workspace_access,
     workspaces,
 )
 
@@ -33,6 +40,13 @@ ROLES = ('owner', 'admin', 'member', 'client_viewer')
 
 # client_viewer is the agency's end client: they see the report and change nothing.
 WRITE_ROLES = frozenset({'owner', 'admin', 'member'})
+
+# Roles reachable through org membership alone. Anything outside this set must be
+# granted the specific workspace in workspace_access.
+ORG_WIDE_ROLES = frozenset({'owner', 'admin', 'member'})
+
+# Roles scoped to individually assigned workspaces.
+WORKSPACE_SCOPED_ROLES = frozenset({'client_viewer'})
 
 # Roles allowed to administer an organization itself (billing, members, deletion).
 ADMIN_ROLES = frozenset({'owner', 'admin'})
@@ -56,6 +70,41 @@ def _forbidden(role):
         'role': role,
     }), 403
 
+
+
+def _requires_explicit_grant(role):
+    """Is this role scoped to individually assigned workspaces?"""
+    return role in WORKSPACE_SCOPED_ROLES
+
+
+def has_workspace_grant(workspace_id, user_id, conn=None):
+    """Does an explicit workspace_access row exist?"""
+    def _read(connection):
+        return connection.execute(
+            select(workspace_access.c.workspace_id).where(
+                (workspace_access.c.workspace_id == workspace_id)
+                & (workspace_access.c.user_id == user_id)
+            ).limit(1)
+        ).scalar_one_or_none() is not None
+
+    if conn is not None:
+        return _read(conn)
+    with engine.connect() as connection:
+        return _read(connection)
+
+
+def _grant_filter(user_id):
+    """A predicate restricting workspace-scoped roles to their granted workspaces.
+
+    Applied to listing queries. Org-wide roles pass unconditionally; a client_viewer
+    passes only for a workspace it holds a grant on.
+    """
+    return memberships.c.role.notin_(tuple(WORKSPACE_SCOPED_ROLES)) | select(
+        workspace_access.c.workspace_id
+    ).where(
+        (workspace_access.c.workspace_id == workspaces.c.id)
+        & (workspace_access.c.user_id == user_id)
+    ).exists()
 
 def current_user_id():
     """The signed-in user's id, or (None, 401 response)."""
@@ -105,6 +154,12 @@ def require_workspace(workspace_id, *, write=None):
     role = row.pop('membership_role')
     org_id = row.pop('membership_org_id')
 
+    # A workspace-scoped role needs the specific workspace, not just the org. 404
+    # rather than 403, for the same reason a non-member gets 404: a client must not
+    # learn that another client's workspace exists.
+    if _requires_explicit_grant(role) and not has_workspace_grant(workspace_id, user_id):
+        return None, _not_found()
+
     if _is_write(write) and role not in WRITE_ROLES:
         return None, _forbidden(role)
 
@@ -145,7 +200,8 @@ def workspace_for_member(workspace_id, user_id):
 
     require_workspace() returns Flask responses, which is right for a route and
     useless inside metrics or an integration. This is the same predicate without
-    the HTTP half - still membership-based, never a predicate on the row.
+    the HTTP half - still membership-based, never a predicate on the row, and
+    applying the same workspace-level grant rule for client_viewer.
     """
     with engine.connect() as conn:
         row = conn.execute(
@@ -155,6 +211,7 @@ def workspace_for_member(workspace_id, user_id):
                 (workspaces.c.id == workspace_id)
                 & (memberships.c.user_id == user_id)
                 & (workspaces.c.status == 'active')
+                & _grant_filter(user_id)
             )
             .limit(1)
         ).mappings().first()
@@ -170,6 +227,7 @@ def workspaces_for_user(user_id):
             .where(
                 (memberships.c.user_id == user_id)
                 & (workspaces.c.status == 'active')
+                & _grant_filter(user_id)
             )
             .order_by(workspaces.c.updated_at.desc())
         ).mappings().all()
@@ -196,6 +254,7 @@ def require_document(document_id, *, write=None):
                 (content_documents.c.id == document_id)
                 & (memberships.c.user_id == user_id)
                 & (workspaces.c.status == 'active')
+                & _grant_filter(user_id)
             )
             .limit(1)
         ).mappings().first()
@@ -223,6 +282,7 @@ def documents_for_user(user_id):
             .where(
                 (memberships.c.user_id == user_id)
                 & (workspaces.c.status == 'active')
+                & _grant_filter(user_id)
             )
             .order_by(content_documents.c.updated_at.desc())
         ).mappings().all()
@@ -244,6 +304,7 @@ def require_job(job_id, *, write=None):
             .where(
                 (analytics_audit_jobs.c.id == job_id)
                 & (memberships.c.user_id == user_id)
+                & _grant_filter(user_id)
             )
             .limit(1)
         ).mappings().first()
